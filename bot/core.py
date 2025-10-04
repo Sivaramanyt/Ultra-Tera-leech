@@ -1,5 +1,5 @@
 """
-Core bot functionality
+Core bot functionality and initialization
 """
 from loguru import logger
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
@@ -33,8 +33,16 @@ class TeraboxBot:
         
         logger.info("✅ Handlers setup complete")
     
-    async def start(self):
-        """Start bot"""
+    def run(self):
+        """Run bot (synchronous method for Docker)"""
         logger.info("🤖 Bot starting...")
-        await self.application.run_polling(drop_pending_updates=True)
-      
+        try:
+            # Use run_polling without await - it handles the event loop internally
+            self.application.run_polling(
+                drop_pending_updates=True,
+                allowed_updates=['message', 'callback_query']
+            )
+        except Exception as e:
+            logger.error(f"Bot run error: {e}")
+            raise
+            
