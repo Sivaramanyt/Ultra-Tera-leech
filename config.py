@@ -1,69 +1,69 @@
 """
-Configuration for Terabox Leech Bot
+Configuration file for Terabox Leech Bot
 """
 import os
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
-# Required Settings
-BOT_TOKEN = os.environ.get('BOT_TOKEN', '')
-OWNER_ID = int(os.environ.get('OWNER_ID', '0'))
-TELEGRAM_API = int(os.environ.get('TELEGRAM_API', '0'))
-TELEGRAM_HASH = os.environ.get('TELEGRAM_HASH', '')
+# Bot Configuration
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+BOT_NAME = os.getenv("BOT_NAME", "Terabox Leech Bot")
 
-# Basic Settings
-DOWNLOAD_DIR = '/usr/src/app/downloads/'
-AUTHORIZED_CHATS = os.environ.get('AUTHORIZED_CHATS', '')
-SUDO_USERS = os.environ.get('SUDO_USERS', '')
+# Owner Configuration
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
-# Database
-DATABASE_URL = os.environ.get('DATABASE_URL', '')
+# Download Configuration
+DOWNLOAD_DIR = os.getenv("DOWNLOAD_DIR", "downloads")
 
-# Leech Settings
-LEECH_SPLIT_SIZE = int(os.environ.get('LEECH_SPLIT_SIZE', '2147483648'))
-AS_DOCUMENT = os.environ.get('AS_DOCUMENT', 'False').lower() == 'true'
-QUEUE_ALL = int(os.environ.get('QUEUE_ALL', '4'))
+# Database Configuration (optional)
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-# Verification System
-VERIFICATION_ENABLED = os.environ.get('VERIFICATION_ENABLED', 'True').lower() == 'true'
-FREE_LEECH_COUNT = int(os.environ.get('FREE_LEECH_COUNT', '3'))
-VERIFY_VALIDITY_TIME = int(os.environ.get('VERIFY_VALIDITY_TIME', '3600'))
+# Channel Configuration
+LOG_CHANNEL = os.getenv("LOG_CHANNEL", "")  # Optional: Channel to log activities
+DUMP_CHANNEL = os.getenv("DUMP_CHANNEL", "")  # Optional: Channel to forward files
 
-# Shortlink Configuration
-SHORTLINK_API = os.environ.get('SHORTLINK_API', '')
-SHORTLINK_URL = os.environ.get('SHORTLINK_URL', '')
-SHORTLINK_TYPE = os.environ.get('SHORTLINK_TYPE', 'shorte.st')
+# Force Subscription Configuration
+FORCE_SUB_CHANNELS = os.getenv("FORCE_SUB_CHANNELS", "")
+# Examples:
+# Public channels: "@channel1 @channel2"  
+# Private channels: "-1001234567890 -1009876543210"
+# Mixed: "@publicchannel -1001234567890"
 
-# Auto-Forward
-AUTO_FORWARD_ENABLED = os.environ.get('AUTO_FORWARD_ENABLED', 'True').lower() == 'true'
-LEECH_LOG_CHANNEL = os.environ.get('LEECH_LOG_CHANNEL', '')
-FORWARD_TAGS = os.environ.get('FORWARD_TAGS', 'True').lower() == 'true'
+# Authorization Configuration (optional)
+AUTHORIZED_CHATS = os.getenv("AUTHORIZED_CHATS", "")  # Space-separated user IDs
 
-# Custom Messages
-PROGRESS_PREFIX = os.environ.get('PROGRESS_PREFIX', '📥 Downloading')
-UPLOAD_PREFIX = os.environ.get('UPLOAD_PREFIX', '📤 Uploading')
-SUCCESS_PREFIX = os.environ.get('SUCCESS_PREFIX', '✅ Successfully Leeched')
-ERROR_PREFIX = os.environ.get('ERROR_PREFIX', '❌ Error')
-BOT_NAME = os.environ.get('BOT_NAME', 'Terabox Leech Bot')
+# API Configuration (optional - for future features)
+API_ID = os.getenv("API_ID", "")
+API_HASH = os.getenv("API_HASH", "")
 
-# Verification Messages
-VERIFY_MSG = os.environ.get('VERIFY_MSG', '🔐 Please complete verification to continue')
-VERIFY_SUCCESS_MSG = os.environ.get('VERIFY_SUCCESS_MSG', '✅ Verification successful!')
-VERIFY_EXPIRED_MSG = os.environ.get('VERIFY_EXPIRED_MSG', '⏰ Verification expired.')
+# Webhook Configuration (for production)
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
+PORT = int(os.getenv("PORT", "8000"))
 
-# Terabox APIs
-TERABOX_API_ENDPOINTS = [
-    "https://wdzone-terabox-api.vercel.app/api/download",
-    "https://api.teradownloader.com/v1/download",
-    "https://terabox-dl.qtcloud.workers.dev/",
-]
+# Feature Flags
+ENABLE_FORCE_SUB = os.getenv("ENABLE_FORCE_SUB", "true").lower() == "true"
+ENABLE_CANCEL_COMMAND = os.getenv("ENABLE_CANCEL_COMMAND", "true").lower() == "true"
 
-# Debug
-DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
+# File Size Limits (in bytes)
+MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", "52428800"))  # 50MB default
+
+# Rate Limiting (optional)
+MAX_DOWNLOADS_PER_USER = int(os.getenv("MAX_DOWNLOADS_PER_USER", "5"))  # Per hour
+
+# Logging Configuration
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 # Validation
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN is required!")
+    raise ValueError("BOT_TOKEN is required")
+
 if not OWNER_ID:
-    raise ValueError("OWNER_ID is required!")
+    raise ValueError("OWNER_ID is required")
+
+print(f"✅ Config loaded - Bot: {BOT_NAME}")
+if FORCE_SUB_CHANNELS:
+    print(f"🔒 Force subscription enabled for: {FORCE_SUB_CHANNELS}")
+else:
+    print("🔓 Force subscription disabled")
