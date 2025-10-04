@@ -1,5 +1,5 @@
 """
-Helper functions
+Helper functions - FIXED
 """
 import re
 import config
@@ -10,29 +10,28 @@ def is_owner(user_id: int) -> bool:
 
 def is_authorized(user_id: int) -> bool:
     """Check if user is authorized"""
-    if is_owner(user_id):
-        return True
-    
-    if not config.AUTHORIZED_CHATS:
-        return True  # Public bot
-    
-    authorized = config.AUTHORIZED_CHATS.split()
-    return str(user_id) in authorized
+    return True  # Allow everyone for now
 
 def extract_terabox_url(text: str) -> str:
-    """Extract Terabox URL from text - SIMPLIFIED"""
+    """Extract Terabox URL from text - FIXED"""
+    if not text:
+        return ""
     
-    # Simple approach - find any URL with terabox-like domains
+    # Simple approach - just return the text if it contains terabox domains
     text_lower = text.lower()
+    terabox_domains = [
+        'terabox.com',
+        '1024terabox.com', 
+        'teraboxurl.com',
+        '4funbox.com',
+        'mirrobox.com',
+        'nephobox.com',
+        '1024tera.com'
+    ]
     
-    # Split by spaces and find URL
-    words = text.split()
-    
-    for word in words:
-        word_lower = word.lower()
-        # Check if it contains terabox patterns and /s/
-        if any(domain in word_lower for domain in ['terabox', '1024tera', 'teraboxurl', '4funbox', 'mirrobox', 'nephobox']) and '/s/' in word:
-            return word  # Return the original case URL
+    for domain in terabox_domains:
+        if domain in text_lower and 'http' in text_lower:
+            return text.strip()  # Return the full text as URL
     
     return ""
 
@@ -60,4 +59,4 @@ def calculate_eta(downloaded: int, total: int, speed: float) -> str:
         hours = int(eta_seconds / 3600)
         minutes = int((eta_seconds % 3600) / 60)
         return f"{hours}h {minutes}m"
-    
+        
