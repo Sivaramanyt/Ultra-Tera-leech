@@ -1,5 +1,5 @@
 """
-Bot handlers - Complete Version with Working API
+Bot handlers - Complete Fixed Version with Emoji Field Parsing
 """
 import aiohttp
 import asyncio
@@ -108,12 +108,12 @@ class BotHandlers:
                 else:
                     # Real success
                     await update.message.reply_text(
-                        f"🎉 Real Download Success!\n\n"
+                        f"🎉 REAL Download Success!\n\n"
                         f"📁 File: {download_result['filename']}\n"
                         f"💾 Size: {download_result['size']}\n"
                         f"🔗 Direct Link: Available\n"
                         f"⚡ Status: Complete\n\n"
-                        f"🔧 File upload to Telegram coming next! ✨"
+                        f"🔥 API WORKING! File upload coming next! ✨"
                     )
             else:
                 # Download failed
@@ -137,7 +137,7 @@ class BotHandlers:
     async def _download_terabox_file(self, url: str, status_msg):
         """Download file from Terabox using working APIs"""
         try:
-            # Working API endpoints (corrected based on screenshot)
+            # Working API endpoints (corrected based on logs)
             api_endpoints = [
                 {
                     'url': 'https://wdzone-terabox-api.vercel.app/api',
@@ -192,7 +192,7 @@ class BotHandlers:
             }
     
     async def _try_api_download(self, api_config: dict, terabox_url: str):
-        """Try downloading from specific API with correct format"""
+        """Try downloading from specific API with correct emoji field parsing"""
         try:
             timeout = aiohttp.ClientTimeout(total=30)
             async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -203,32 +203,62 @@ class BotHandlers:
                 logger.info(f"🔍 Trying API: {api_type} - {api_url}")
                 
                 if api_type == 'wdzone':
-                    # WDZone API - uses GET with url parameter (as shown in screenshot)
+                    # WDZone API - uses GET with url parameter
                     params = {'url': terabox_url}
                     async with session.get(api_url, params=params) as response:
                         logger.info(f"WDZone API Response Status: {response.status}")
                         
                         if response.status == 200:
                             result = await response.json()
-                            logger.info(f"WDZone API Response: {result}")
+                            logger.info(f"WDZone API Response Keys: {list(result.keys())}")
                             
-                            # Parse response based on screenshot format
-                            if result.get('Status') == 'Success' and result.get('Extracted Info'):
-                                extracted_info = result.get('Extracted Info')
+                            # Try different possible field combinations
+                            status_field = None
+                            info_field = None
+                            
+                            # Check for status field variations
+                            for key in result.keys():
+                                if 'status' in key.lower():
+                                    status_field = key
+                                if 'info' in key.lower():
+                                    info_field = key
+                            
+                            logger.info(f"Found status field: {status_field}, info field: {info_field}")
+                            
+                            # Parse response with found fields
+                            if status_field and info_field and result.get(status_field) == 'Success':
+                                extracted_info = result.get(info_field)
                                 if isinstance(extracted_info, list) and len(extracted_info) > 0:
                                     info = extracted_info[0]  # First file
                                     
-                                    download_url = info.get('Direct Download')
-                                    title = info.get('Title', 'download')
-                                    size = info.get('Size', 'Unknown')
+                                    logger.info(f"File info keys: {list(info.keys())}")
+                                    
+                                    # Try to find download URL with different possible field names
+                                    download_url = None
+                                    title = 'download'
+                                    size = 'Unknown'
+                                    
+                                    # Check for download URL variations
+                                    for key in info.keys():
+                                        if 'download' in key.lower():
+                                            download_url = info.get(key)
+                                        if 'title' in key.lower() or 'name' in key.lower():
+                                            title = info.get(key, 'download')
+                                        if 'size' in key.lower():
+                                            size = info.get(key, 'Unknown')
                                     
                                     if download_url:
+                                        logger.info(f"✅ WDZone API Success - File: {title}, Size: {size}")
                                         return {
                                             'success': True,
                                             'download_url': download_url,
                                             'filename': title,
                                             'size': size
                                         }
+                                    else:
+                                        logger.warning("❌ WDZone API - No download URL found in any field")
+                            else:
+                                logger.warning(f"❌ WDZone API - Status not success or missing fields")
                 
                 elif api_type == 'qtcloud':
                     # QTCloud Workers API
