@@ -20,19 +20,19 @@ def is_authorized(user_id: int) -> bool:
     return str(user_id) in authorized
 
 def extract_terabox_url(text: str) -> str:
-    """Extract Terabox URL from text"""
-    patterns = [
-        r'https?://(?:www\.)?terabox\.com/s/[A-Za-z0-9_-]+',
-        r'https?://(?:www\.)?1024tera\.com/s/[A-Za-z0-9_-]+',
-        r'https?://(?:www\.)?4funbox\.com/s/[A-Za-z0-9_-]+',
-        r'https?://(?:www\.)?mirrobox\.com/s/[A-Za-z0-9_-]+',
-        r'https?://(?:www\.)?nephobox\.com/s/[A-Za-z0-9_-]+',
-    ]
+    """Extract Terabox URL from text - SIMPLIFIED"""
     
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            return match.group(0)
+    # Simple approach - find any URL with terabox-like domains
+    text_lower = text.lower()
+    
+    # Split by spaces and find URL
+    words = text.split()
+    
+    for word in words:
+        word_lower = word.lower()
+        # Check if it contains terabox patterns and /s/
+        if any(domain in word_lower for domain in ['terabox', '1024tera', 'teraboxurl', '4funbox', 'mirrobox', 'nephobox']) and '/s/' in word:
+            return word  # Return the original case URL
     
     return ""
 
@@ -60,3 +60,4 @@ def calculate_eta(downloaded: int, total: int, speed: float) -> str:
         hours = int(eta_seconds / 3600)
         minutes = int((eta_seconds % 3600) / 60)
         return f"{hours}h {minutes}m"
+    
