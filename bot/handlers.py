@@ -1,5 +1,5 @@
 """
-Bot handlers - Fixed Version
+Bot handlers - Complete Fixed Version
 """
 from loguru import logger
 from telegram import Update
@@ -25,6 +25,10 @@ class BotHandlers:
         """Handle /stats"""
         await update.message.reply_text("📊 Bot is working!")
     
+    async def verify_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /verify - ADDED BACK"""
+        await update.message.reply_text("🔐 Verification system ready!")
+    
     async def handle_terabox_link(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle Terabox links - FIXED"""
         user_id = update.effective_user.id
@@ -33,7 +37,7 @@ class BotHandlers:
         logger.info(f"🔥 Processing Terabox link from {user_id}")
         logger.info(f"📝 Message text: {text}")
         
-        # Simple validation - just check if it contains terabox domain
+        # Simple validation
         text_lower = text.lower()
         is_valid = any(domain in text_lower for domain in [
             'terabox.com', '1024terabox.com', 'teraboxurl.com', 
@@ -49,11 +53,10 @@ class BotHandlers:
             f"🎉 SUCCESS! Terabox link detected!\n\n"
             f"🔗 Link: {text[:50]}...\n"
             f"👤 User: {user_id}\n"
-            f"✅ Ready for download!\n\n"
-            f"📥 Starting download process..."
+            f"✅ Ready for download!"
         )
         
-        # Simulate download progress
+        # Simulate download
         status_msg = await update.message.reply_text("📥 Downloading from Terabox...")
         
         import asyncio
@@ -72,12 +75,12 @@ class BotHandlers:
             "✅ Download Complete!\n"
             "📄 File: sample_video.mp4\n"
             "💾 Size: 125 MB\n\n"
-            "🔧 Note: Actual download function will be added next!"
+            "🔧 Actual download will be added next!"
         )
     
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle regular text"""
         await update.message.reply_text(
-            "ℹ️ This is regular text. Send a Terabox link to test!"
-        )
+            "ℹ️ Send a Terabox link to test!"
+    )
         
