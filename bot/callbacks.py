@@ -1,9 +1,11 @@
 """
-Callback handlers for inline keyboards
+Callback handlers for inline buttons
 """
 from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
+
+from .force_sub import force_subscription
 
 class CallbackHandlers:
     def __init__(self):
@@ -14,16 +16,32 @@ class CallbackHandlers:
         query = update.callback_query
         await query.answer()
         
-        data = query.data
-        user_id = query.from_user.id
+        if query.data == "check_subscription":
+            # Re-check subscription
+            # Create a mock update object for the subscription check
+            mock_update = type('MockUpdate', (), {
+                'effective_user': update.effective_user,
+                'message': query.message
+            })()
+            
+            if await force_subscription.check_subscription(mock_update, context):
+                await query.edit_message_text(
+                    "✅ **Subscription Verified!**\n\n"
+                    "Thank you for joining our channel(s)!\n"
+                    "You can now use the bot freely.\n\n"
+                    "Send /start to begin!",
+                    parse_mode='Markdown'
+                )
+            # If not subscribed, the check function will send the force sub message again
         
-        logger.info(f"Callback: {data} from {user_id}")
+        elif query.data.startswith("no_link_"):
+            # Handle channels without accessible links
+            await query.answer(
+                "Please contact admin to get access to this channel.",
+                show_alert=True
+            )
         
-        if data.startswith("verify_"):
-            await self._handle_verification(query, context)
         else:
-            await query.edit_message_text("❌ Invalid callback")
-    
-    async def _handle_verification(self, query, context):
-        """Handle verification callbacks"""
-        await query.edit_message_text("🔐 Complete verification in the link above")
+            # Handle unknown callback data
+            await query.answer("Unknown action", show_alert=True)
+                
