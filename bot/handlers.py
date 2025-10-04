@@ -1,90 +1,83 @@
 """
-Bot handlers - With debugging
+Bot handlers - Fixed Version
 """
 from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
-from telegram.constants import ParseMode
-
-from utils.helpers import is_owner, is_authorized, extract_terabox_url
-import config
 
 class BotHandlers:
     def __init__(self):
-        self.active_downloads = {}
+        pass
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start"""
-        user = update.effective_user
         await update.message.reply_text(
-            f"🎉 Welcome {user.first_name}!\n\n"
-            f"I'm {config.BOT_NAME}\n\n"
-            f"📥 Send me a Terabox link to download!\n\n"
-            f"✅ Supported:\n"
-            f"• terabox.com/s/xxx\n"
-            f"• 1024terabox.com/s/xxx\n" 
-            f"• teraboxurl.com/s/xxx",
-            parse_mode=ParseMode.HTML
+            "🎉 Welcome! Send me a Terabox link to test!"
         )
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help"""
         await update.message.reply_text(
-            "📋 Commands:\n"
-            "/start - Start bot\n"
-            "/help - This message\n\n"
-            "🔗 Just send any Terabox link!"
+            "📋 Just send a Terabox link and I'll detect it!"
         )
     
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /stats"""
-        if not is_owner(update.effective_user.id):
-            await update.message.reply_text("❌ Owner only")
-            return
-        
-        await update.message.reply_text(f"📊 {config.BOT_NAME} is running!")
-    
-    async def verify_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /verify"""
-        await update.message.reply_text("🔐 Verification system ready!")
+        await update.message.reply_text("📊 Bot is working!")
     
     async def handle_terabox_link(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle Terabox links - WITH DEBUGGING"""
+        """Handle Terabox links - FIXED"""
         user_id = update.effective_user.id
-        message_text = update.message.text
+        text = update.message.text
         
-        logger.info(f"🔍 TERABOX HANDLER CALLED!")
-        logger.info(f"📝 Message: {message_text}")
-        logger.info(f"👤 User: {user_id}")
+        logger.info(f"🔥 Processing Terabox link from {user_id}")
+        logger.info(f"📝 Message text: {text}")
         
-        # Extract URL
-        terabox_url = extract_terabox_url(message_text)
-        logger.info(f"🔗 Extracted URL: {terabox_url}")
+        # Simple validation - just check if it contains terabox domain
+        text_lower = text.lower()
+        is_valid = any(domain in text_lower for domain in [
+            'terabox.com', '1024terabox.com', 'teraboxurl.com', 
+            '4funbox.com', 'mirrobox.com', 'nephobox.com'
+        ])
         
-        if not terabox_url:
-            await update.message.reply_text(
-                f"❌ Could not extract URL\n"
-                f"📝 Your message: {message_text}"
-            )
+        if not is_valid:
+            await update.message.reply_text("❌ Invalid Terabox link")
             return
         
-        # Success - show we detected it
+        # Success! Link detected
         await update.message.reply_text(
-            f"🎉 LINK DETECTED!\n\n"
-            f"🔗 URL: {terabox_url}\n"
-            f"📝 Original: {message_text}\n\n"
-            f"✅ Bot is working correctly!\n"
-            f"⏳ Download function will be added next."
+            f"🎉 SUCCESS! Terabox link detected!\n\n"
+            f"🔗 Link: {text[:50]}...\n"
+            f"👤 User: {user_id}\n"
+            f"✅ Ready for download!\n\n"
+            f"📥 Starting download process..."
+        )
+        
+        # Simulate download progress
+        status_msg = await update.message.reply_text("📥 Downloading from Terabox...")
+        
+        import asyncio
+        await asyncio.sleep(2)
+        
+        await status_msg.edit_text(
+            "📥 Downloading...\n"
+            "📊 Progress: 50%\n"
+            "[█████░░░░░]\n"
+            "⚡ Speed: 2.5 MB/s"
+        )
+        
+        await asyncio.sleep(2)
+        
+        await status_msg.edit_text(
+            "✅ Download Complete!\n"
+            "📄 File: sample_video.mp4\n"
+            "💾 Size: 125 MB\n\n"
+            "🔧 Note: Actual download function will be added next!"
         )
     
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle regular text"""
-        message_text = update.message.text
-        logger.info(f"📝 Regular text received: {message_text}")
-        
         await update.message.reply_text(
-            f"ℹ️ This was not detected as Terabox link\n\n"
-            f"📝 Your message: {message_text}\n\n"
-            f"✅ Send: terabox.com/s/xxx or similar"
-                                 )
+            "ℹ️ This is regular text. Send a Terabox link to test!"
+        )
         
