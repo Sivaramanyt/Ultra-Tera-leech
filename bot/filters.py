@@ -11,16 +11,21 @@ class TeraboxFilter(filters.MessageFilter):
         if not message.text:
             return False
         
-        patterns = [
-            r'https?://(?:www\.)?terabox\.com/s/[A-Za-z0-9_-]+',
-            r'https?://(?:www\.)?1024tera\.com/s/[A-Za-z0-9_-]+',
-            r'https?://(?:www\.)?4funbox\.com/s/[A-Za-z0-9_-]+',
-            r'https?://(?:www\.)?mirrobox\.com/s/[A-Za-z0-9_-]+',
-            r'https?://(?:www\.)?nephobox\.com/s/[A-Za-z0-9_-]+',
+        text = message.text.lower()
+        
+        # Check for any terabox-related domain
+        terabox_keywords = [
+            'terabox.com',
+            '1024tera',
+            'teraboxurl',
+            '4funbox',
+            'mirrobox',
+            'nephobox'
         ]
         
-        for pattern in patterns:
-            if re.search(pattern, message.text, re.IGNORECASE):
+        for keyword in terabox_keywords:
+            if keyword in text and '/s/' in text:
                 return True
         
         return False
+        
