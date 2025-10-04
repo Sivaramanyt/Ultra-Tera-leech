@@ -1,5 +1,5 @@
 """
-Bot handlers - Simplified for testing
+Bot handlers - With debugging
 """
 from loguru import logger
 from telegram import Update
@@ -18,7 +18,12 @@ class BotHandlers:
         user = update.effective_user
         await update.message.reply_text(
             f"🎉 Welcome {user.first_name}!\n\n"
-            f"I'm {config.BOT_NAME} - Send me a Terabox link to download!",
+            f"I'm {config.BOT_NAME}\n\n"
+            f"📥 Send me a Terabox link to download!\n\n"
+            f"✅ Supported:\n"
+            f"• terabox.com/s/xxx\n"
+            f"• 1024terabox.com/s/xxx\n" 
+            f"• teraboxurl.com/s/xxx",
             parse_mode=ParseMode.HTML
         )
     
@@ -28,7 +33,7 @@ class BotHandlers:
             "📋 Commands:\n"
             "/start - Start bot\n"
             "/help - This message\n\n"
-            "🔗 Just send any Terabox link to download!"
+            "🔗 Just send any Terabox link!"
         )
     
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -44,44 +49,42 @@ class BotHandlers:
         await update.message.reply_text("🔐 Verification system ready!")
     
     async def handle_terabox_link(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle Terabox links - FIXED"""
+        """Handle Terabox links - WITH DEBUGGING"""
         user_id = update.effective_user.id
+        message_text = update.message.text
         
-        logger.info(f"📥 Terabox link from user {user_id}")
+        logger.info(f"🔍 TERABOX HANDLER CALLED!")
+        logger.info(f"📝 Message: {message_text}")
+        logger.info(f"👤 User: {user_id}")
         
         # Extract URL
-        terabox_url = extract_terabox_url(update.message.text)
+        terabox_url = extract_terabox_url(message_text)
+        logger.info(f"🔗 Extracted URL: {terabox_url}")
+        
         if not terabox_url:
-            await update.message.reply_text("❌ Invalid Terabox link")
+            await update.message.reply_text(
+                f"❌ Could not extract URL\n"
+                f"📝 Your message: {message_text}"
+            )
             return
         
-        logger.info(f"🔗 Processing URL: {terabox_url}")
-        
-        # Send processing message
-        status_msg = await update.message.reply_text(
-            f"📥 Processing Terabox link...\n🔗 {terabox_url[:50]}..."
-        )
-        
-        # Simulate download (replace this with actual download later)
-        await status_msg.edit_text(
-            f"📥 Downloading from Terabox...\n"
-            f"📊 Progress: 50%\n"
-            f"[█████░░░░░]\n"
-            f"⚡ Speed: 2.5 MB/s"
-        )
-        
-        # For now, send a test response
-        await status_msg.edit_text(
-            f"✅ Download would start here!\n"
+        # Success - show we detected it
+        await update.message.reply_text(
+            f"🎉 LINK DETECTED!\n\n"
             f"🔗 URL: {terabox_url}\n"
-            f"📝 Status: Link detected successfully!\n\n"
-            f"⚠️ Download function needs to be connected."
+            f"📝 Original: {message_text}\n\n"
+            f"✅ Bot is working correctly!\n"
+            f"⏳ Download function will be added next."
         )
     
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle text messages"""
+        """Handle regular text"""
+        message_text = update.message.text
+        logger.info(f"📝 Regular text received: {message_text}")
+        
         await update.message.reply_text(
-            "ℹ️ Send me a Terabox link to download!\n\n"
-            "Supported: terabox.com, 1024terabox.com, teraboxurl.com"
-        )
+            f"ℹ️ This was not detected as Terabox link\n\n"
+            f"📝 Your message: {message_text}\n\n"
+            f"✅ Send: terabox.com/s/xxx or similar"
+                                 )
         
