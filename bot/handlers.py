@@ -1,11 +1,14 @@
 """
-Bot handlers - Complete Fixed Version with Emoji Field Parsing
+Bot handlers - Complete Version with Real Download & Upload
 """
 import aiohttp
 import asyncio
+import aiofiles
+import os
 from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
+import config
 
 class BotHandlers:
     def __init__(self):
@@ -50,7 +53,7 @@ class BotHandlers:
         await update.message.reply_text("🔐 Verification system ready!")
     
     async def handle_terabox_link(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle Terabox links with working API"""
+        """Handle Terabox links with real download and upload"""
         user_id = update.effective_user.id
         text = update.message.text
         
@@ -79,65 +82,59 @@ class BotHandlers:
         )
         
         try:
-            # Try to download using working APIs
-            download_result = await self._download_terabox_file(text, status_msg)
+            # Step 1: Get download URL from API
+            download_result = await self._get_download_info(text, status_msg)
             
-            if download_result['success']:
-                # Success - file downloaded
+            if not download_result['success']:
                 await status_msg.edit_text(
-                    f"✅ Download Ready!\n\n"
-                    f"📄 File: {download_result['filename']}\n"
+                    f"❌ Failed to get download info\n\n"
+                    f"Reason: {download_result['error']}"
+                )
+                return
+            
+            # Step 2: Download the actual file
+            file_path = await self._download_file(
+                download_result['download_url'],
+                download_result['filename'],
+                status_msg
+            )
+            
+            if not file_path:
+                await status_msg.edit_text("❌ File download failed")
+                return
+            
+            # Step 3: Upload to Telegram
+            await status_msg.edit_text("📤 Uploading to Telegram...")
+            
+            upload_success = await self._upload_to_telegram(
+                update, file_path, download_result['filename']
+            )
+            
+            if upload_success:
+                await status_msg.edit_text(
+                    f"🎉 SUCCESS!\n\n"
+                    f"📁 File: {download_result['filename']}\n"
                     f"💾 Size: {download_result['size']}\n"
-                    f"📊 Status: Ready for upload\n\n"
-                    f"🚀 Uploading to Telegram..."
+                    f"⚡ Status: Uploaded to Telegram\n\n"
+                    f"✨ Download complete!"
                 )
-                
-                # Simulate file upload (replace with real upload later)
-                await asyncio.sleep(3)
-                
-                if download_result.get('mock'):
-                    # Mock success
-                    await update.message.reply_text(
-                        f"🎉 Mock Success!\n\n"
-                        f"📁 File: {download_result['filename']}\n"
-                        f"💾 Size: {download_result['size']}\n"
-                        f"⚡ Status: Complete\n\n"
-                        f"🔧 Note: API connection successful!\n"
-                        f"Real download will be implemented soon! ✨"
-                    )
-                else:
-                    # Real success
-                    await update.message.reply_text(
-                        f"🎉 REAL Download Success!\n\n"
-                        f"📁 File: {download_result['filename']}\n"
-                        f"💾 Size: {download_result['size']}\n"
-                        f"🔗 Direct Link: Available\n"
-                        f"⚡ Status: Complete\n\n"
-                        f"🔥 API WORKING! File upload coming next! ✨"
-                    )
             else:
-                # Download failed
-                await status_msg.edit_text(
-                    f"❌ Download Failed\n\n"
-                    f"Reason: {download_result['error']}\n\n"
-                    f"💡 Try:\n"
-                    f"• Check if the link is valid\n"
-                    f"• Try again in a few minutes\n"
-                    f"• Use a different Terabox link"
-                )
+                await status_msg.edit_text("❌ Upload to Telegram failed")
+            
+            # Clean up downloaded file
+            await self._cleanup_file(file_path)
                 
         except Exception as e:
-            logger.error(f"Download error: {e}")
+            logger.error(f"Download process error: {e}")
             await status_msg.edit_text(
                 "❌ System Error\n\n"
-                "Something went wrong on our end.\n"
-                "Please try again in a moment!"
+                "Something went wrong. Please try again!"
             )
     
-    async def _download_terabox_file(self, url: str, status_msg):
-        """Download file from Terabox using working APIs"""
+    async def _get_download_info(self, url: str, status_msg):
+        """Get download URL and file info from API"""
         try:
-            # Working API endpoints (corrected based on logs)
+            # API endpoints
             api_endpoints = [
                 {
                     'url': 'https://wdzone-terabox-api.vercel.app/api',
@@ -146,53 +143,34 @@ class BotHandlers:
                 {
                     'url': 'https://terabox-dl.qtcloud.workers.dev/',
                     'type': 'qtcloud'
-                },
-                {
-                    'url': 'https://api.teraboxapp.com/api/get-info',
-                    'type': 'teraboxapp'
                 }
             ]
             
             for i, api_config in enumerate(api_endpoints):
                 try:
                     await status_msg.edit_text(
-                        f"📥 Downloading from Terabox...\n\n"
-                        f"🔄 Trying server {i+1}/{len(api_endpoints)}\n"
-                        f"📡 Server: {api_config['type']}\n"
+                        f"📡 Getting download info...\n\n"
+                        f"🔄 Server {i+1}/{len(api_endpoints)}\n"
                         f"⚡ Please wait..."
                     )
                     
-                    # Try API
                     result = await self._try_api_download(api_config, url)
                     
                     if result['success']:
-                        logger.info(f"✅ Success with API: {api_config['url']}")
+                        logger.info(f"✅ Got download info from: {api_config['url']}")
                         return result
-                    else:
-                        logger.warning(f"❌ Failed with API: {api_config['url']} - {result.get('error')}")
                         
                 except Exception as e:
                     logger.warning(f"API {api_config['url']} failed: {e}")
                     continue
             
-            # All APIs failed - return mock success for testing
-            logger.info("All APIs failed, returning mock success")
-            return {
-                'success': True,
-                'download_url': 'https://example.com/mock-file.mp4',
-                'filename': 'terabox_video.mp4',
-                'size': '245 MB',
-                'mock': True
-            }
+            return {'success': False, 'error': 'All APIs failed'}
             
         except Exception as e:
-            return {
-                'success': False,
-                'error': f'System error: {str(e)}'
-            }
+            return {'success': False, 'error': f'System error: {str(e)}'}
     
     async def _try_api_download(self, api_config: dict, terabox_url: str):
-        """Try downloading from specific API with correct emoji field parsing"""
+        """Try API to get download info"""
         try:
             timeout = aiohttp.ClientTimeout(total=30)
             async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -200,45 +178,32 @@ class BotHandlers:
                 api_url = api_config['url']
                 api_type = api_config['type']
                 
-                logger.info(f"🔍 Trying API: {api_type} - {api_url}")
-                
                 if api_type == 'wdzone':
-                    # WDZone API - uses GET with url parameter
                     params = {'url': terabox_url}
                     async with session.get(api_url, params=params) as response:
-                        logger.info(f"WDZone API Response Status: {response.status}")
-                        
                         if response.status == 200:
                             result = await response.json()
-                            logger.info(f"WDZone API Response Keys: {list(result.keys())}")
                             
-                            # Try different possible field combinations
+                            # Find status and info fields
                             status_field = None
                             info_field = None
                             
-                            # Check for status field variations
                             for key in result.keys():
                                 if 'status' in key.lower():
                                     status_field = key
                                 if 'info' in key.lower():
                                     info_field = key
                             
-                            logger.info(f"Found status field: {status_field}, info field: {info_field}")
-                            
-                            # Parse response with found fields
                             if status_field and info_field and result.get(status_field) == 'Success':
                                 extracted_info = result.get(info_field)
                                 if isinstance(extracted_info, list) and len(extracted_info) > 0:
-                                    info = extracted_info[0]  # First file
+                                    info = extracted_info[0]
                                     
-                                    logger.info(f"File info keys: {list(info.keys())}")
-                                    
-                                    # Try to find download URL with different possible field names
+                                    # Extract download info
                                     download_url = None
                                     title = 'download'
                                     size = 'Unknown'
                                     
-                                    # Check for download URL variations
                                     for key in info.keys():
                                         if 'download' in key.lower():
                                             download_url = info.get(key)
@@ -248,25 +213,18 @@ class BotHandlers:
                                             size = info.get(key, 'Unknown')
                                     
                                     if download_url:
-                                        logger.info(f"✅ WDZone API Success - File: {title}, Size: {size}")
                                         return {
                                             'success': True,
                                             'download_url': download_url,
                                             'filename': title,
                                             'size': size
                                         }
-                                    else:
-                                        logger.warning("❌ WDZone API - No download URL found in any field")
-                            else:
-                                logger.warning(f"❌ WDZone API - Status not success or missing fields")
                 
                 elif api_type == 'qtcloud':
-                    # QTCloud Workers API
                     params = {'url': terabox_url}
                     async with session.get(api_url, params=params) as response:
                         if response.status == 200:
                             result = await response.json()
-                            logger.info(f"QTCloud API Response: {result}")
                             
                             if result.get('download'):
                                 return {
@@ -275,32 +233,114 @@ class BotHandlers:
                                     'filename': result.get('name', 'download'),
                                     'size': result.get('size', 'Unknown')
                                 }
-                
-                elif api_type == 'teraboxapp':
-                    # TeraboxApp API
-                    data = {'url': terabox_url}
-                    async with session.post(api_url, json=data) as response:
-                        if response.status == 200:
-                            result = await response.json()
-                            logger.info(f"TeraboxApp API Response: {result}")
-                            
-                            if result.get('download_link'):
-                                return {
-                                    'success': True,
-                                    'download_url': result['download_link'],
-                                    'filename': result.get('file_name', 'download'),
-                                    'size': result.get('size', 'Unknown')
-                                }
             
-            logger.warning(f"API {api_type} returned no download link")
-            return {'success': False, 'error': 'API returned no download link'}
+            return {'success': False, 'error': 'No download URL found'}
             
-        except asyncio.TimeoutError:
-            logger.error(f"API {api_type} timeout")
-            return {'success': False, 'error': 'API timeout (30s)'}
         except Exception as e:
-            logger.error(f"API {api_type} error: {e}")
             return {'success': False, 'error': f'API error: {str(e)}'}
+    
+    async def _download_file(self, download_url: str, filename: str, status_msg):
+        """Download the actual file from direct URL"""
+        try:
+            # Sanitize filename
+            filename = self._sanitize_filename(filename)
+            file_path = os.path.join(config.DOWNLOAD_DIR, filename)
+            
+            # Make sure download directory exists
+            os.makedirs(config.DOWNLOAD_DIR, exist_ok=True)
+            
+            logger.info(f"📥 Downloading file to: {file_path}")
+            
+            timeout = aiohttp.ClientTimeout(total=300)  # 5 minutes
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(download_url) as response:
+                    if response.status == 200:
+                        total_size = int(response.headers.get('content-length', 0))
+                        downloaded = 0
+                        
+                        async with aiofiles.open(file_path, 'wb') as file:
+                            async for chunk in response.content.iter_chunked(8192):
+                                await file.write(chunk)
+                                downloaded += len(chunk)
+                                
+                                # Update progress every 1MB
+                                if downloaded % (1024 * 1024) == 0 or downloaded >= total_size:
+                                    if total_size > 0:
+                                        progress = (downloaded / total_size) * 100
+                                        await status_msg.edit_text(
+                                            f"📥 Downloading file...\n\n"
+                                            f"📊 Progress: {progress:.1f}%\n"
+                                            f"💾 Downloaded: {self._format_bytes(downloaded)}\n"
+                                            f"📦 Total: {self._format_bytes(total_size)}"
+                                        )
+                        
+                        logger.info(f"✅ File downloaded successfully: {file_path}")
+                        return file_path
+                    else:
+                        logger.error(f"❌ Download failed: HTTP {response.status}")
+                        return None
+                        
+        except Exception as e:
+            logger.error(f"Download error: {e}")
+            return None
+    
+    async def _upload_to_telegram(self, update: Update, file_path: str, filename: str):
+        """Upload file to Telegram"""
+        try:
+            logger.info(f"📤 Uploading to Telegram: {file_path}")
+            
+            # Check file size
+            file_size = os.path.getsize(file_path)
+            
+            if file_size > 50 * 1024 * 1024:  # 50MB limit for bots
+                await update.message.reply_text(
+                    f"❌ File too large: {self._format_bytes(file_size)}\n"
+                    f"Telegram bot limit: 50MB"
+                )
+                return False
+            
+            # Upload as document
+            with open(file_path, 'rb') as file:
+                await update.message.reply_document(
+                    document=file,
+                    filename=filename,
+                    caption=f"📁 {filename}\n💾 Size: {self._format_bytes(file_size)}\n\n🤖 Downloaded by {config.BOT_NAME}"
+                )
+            
+            logger.info("✅ File uploaded to Telegram successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Upload error: {e}")
+            return False
+    
+    def _sanitize_filename(self, filename: str) -> str:
+        """Clean filename for safe storage"""
+        import re
+        # Remove invalid characters
+        filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+        # Limit length
+        if len(filename) > 200:
+            name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
+            filename = name[:200-len(ext)-1] + '.' + ext if ext else name[:200]
+        return filename
+    
+    def _format_bytes(self, bytes_count: int) -> str:
+        """Format bytes to human readable"""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if bytes_count < 1024.0:
+                return f"{bytes_count:.1f} {unit}"
+            bytes_count /= 1024.0
+        return f"{bytes_count:.1f} TB"
+    
+    async def _cleanup_file(self, file_path: str):
+        """Clean up downloaded file"""
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logger.info(f"🧹 Cleaned up: {file_path}")
+        except Exception as e:
+            logger.error(f"Cleanup error: {e}")
     
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle regular text"""
@@ -310,5 +350,5 @@ class BotHandlers:
             "• https://terabox.com/s/xxxxx\n"
             "• https://1024terabox.com/s/xxxxx\n\n"
             "I'll download it for you! 🚀"
-        )
-        
+                )
+                
