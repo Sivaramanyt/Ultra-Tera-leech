@@ -1,7 +1,6 @@
 """
 Terabox Leech Bot - Main Entry Point
 """
-import asyncio
 import os
 import sys
 from loguru import logger
@@ -21,7 +20,7 @@ logger.add(
     format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
 )
 
-async def main():
+def main():
     """Start the bot"""
     try:
         logger.info(f"🚀 Starting {config.BOT_NAME}...")
@@ -30,9 +29,9 @@ async def main():
         os.makedirs(config.DOWNLOAD_DIR, exist_ok=True)
         os.makedirs("logs", exist_ok=True)
         
-        # Start bot
+        # Start bot (synchronous)
         bot = TeraboxBot()
-        await bot.start()
+        bot.run()
         
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
@@ -41,4 +40,5 @@ async def main():
         raise
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
+    
