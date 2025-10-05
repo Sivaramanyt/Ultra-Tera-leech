@@ -1,96 +1,156 @@
 """
-Core bot functionality - Complete with all handlers
+Bot core with automatic conflict resolution - Complete File
 """
+import asyncio
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.error import Conflict, TimedOut, NetworkError
 from loguru import logger
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
-
-from .handlers import BotHandlers
-from .callbacks import CallbackHandlers
-from .filters import TeraboxFilter
 import config
 
 class TeraboxBot:
     def __init__(self):
-        # Add unique ID to prevent conflicts
-        self.app_id = f"terabox_bot_{hash(config.BOT_TOKEN) % 10000}"
-        
-        self.application = Application.builder().token(config.BOT_TOKEN).build()
-        self.handlers = BotHandlers()
-        self.callbacks = CallbackHandlers()
-        self._setup_handlers()
+        self.app = None
+        self.max_retries = 10
+        self.base_delay = 5
     
-    def _setup_handlers(self):
-        """Setup all handlers"""
-        # Command handlers
-        self.application.add_handler(CommandHandler("start", self.handlers.start_command))
-        self.application.add_handler(CommandHandler("help", self.handlers.help_command))
-        self.application.add_handler(CommandHandler("stats", self.handlers.stats_command))
-        self.application.add_handler(CommandHandler("verify", self.handlers.verify_command))
+    async def _setup_handlers(self):
+        """Setup all bot handlers"""
+        from .handlers import BotHandlers
+        handlers = BotHandlers()
         
-        # Cancel command (if enabled)
-        if config.ENABLE_CANCEL_COMMAND:
-            self.application.add_handler(CommandHandler("cancel", self.handlers.cancel_command))
+        # Command handlers
+        self.app.add_handler(CommandHandler("start", handlers.start_command))
+        self.app.add_handler(CommandHandler("help", handlers.help_command))
+        self.app.add_handler(CommandHandler("cancel", handlers.cancel_command))
+        self.app.add_handler(CommandHandler("stats", handlers.stats_command))
         
         # Message handlers
-        terabox_filter = TeraboxFilter()
-        self.application.add_handler(
-            MessageHandler(terabox_filter, self.handlers.handle_terabox_link)
-        )
-        self.application.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, self.handlers.handle_text)
-        )
+        self.app.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.Regex(
+                r'https?://.*(terabox|1024terabox|teraboxurl|mirrobox|nephobox|4funbox)\.com'
+            ),
+            handlers.handle_terabox_link
+        ))
         
-        # Callback query handler
-        self.application.add_handler(CallbackQueryHandler(self.callbacks.handle_callback))
+        self.app.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            handlers.handle_text
+        ))
         
         # Error handler
-        self.application.add_error_handler(self._error_handler)
+        self.app.add_error_handler(self._error_handler)
         
-        logger.info(f"✅ Handlers ready for {self.app_id}")
+        logger.info(f"✅ Handlers ready for {self.app.bot.username}")
     
-    async def _error_handler(self, update, context):
-        """Handle bot errors"""
-        logger.error(f"Bot error: {context.error}")
+    async def _error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle bot errors with conflict resolution"""
+        error = context.error
         
-        # Handle specific error types
-        if "Conflict" in str(context.error):
+        if isinstance(error, Conflict):
+            logger.error(f"Bot error: {error}")
             logger.warning("Conflict detected - another bot instance may be running")
+            # Don't restart here, let the main loop handle it
             return
+        elif isinstance(error, (TimedOut, NetworkError)):
+            logger.warning(f"Network error (will retry): {error}")
+            return
+        else:
+            logger.error(f"Unexpected error: {error}")
+    
+    async def run(self):
+        """Run bot with automatic conflict handling"""
+        logger.info(f"🤖 Starting {config.BOT_TOKEN[:10]}...")
         
-        if update and update.effective_message:
+        for attempt in range(self.max_retries):
             try:
-                await update.effective_message.reply_text(
-                    "❌ An error occurred. Please try again."
+                # Setup application
+                await self._setup_application()
+                
+                # Clear any existing webhooks/updates
+                await self._clear_updates()
+                
+                # Start polling with conflict handling
+                logger.info("🚀 Starting polling with conflict protection...")
+                await self.app.run_polling(
+                    drop_pending_updates=True,
+                    close_loop=False,
+                    stop_signals=None,
+                    poll_interval=2.0,
+                    timeout=20,
+                    bootstrap_retries=3,
+                    read_timeout=10,
+                    write_timeout=10,
+                    connect_timeout=10,
+                    pool_timeout=10
                 )
+                return  # Success
+                
+            except Conflict as e:
+                logger.warning(f"🔄 Conflict on attempt {attempt + 1}: {e}")
+                await self._handle_conflict(attempt + 1)
+                
+            except Exception as e:
+                logger.error(f"❌ Error on attempt {attempt + 1}: {e}")
+                if attempt < self.max_retries - 1:
+                    wait_time = self.base_delay * (2 ** attempt)  # Exponential backoff
+                    logger.info(f"⏳ Retrying in {wait_time} seconds...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error("❌ Max retries reached")
+                    raise
+    
+    async def _setup_application(self):
+        """Setup fresh application"""
+        # Clean shutdown of existing app
+        if self.app:
+            try:
+                await self.app.shutdown()
+                await self.app.stop()
             except:
                 pass
-    
-    def run(self):
-        """Run bot with advanced conflict handling"""
-        logger.info(f"🤖 Starting {self.app_id}...")
         
-        try:
-            # Force clear any existing updates
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(self._clear_updates())
-            
-            # Start polling
-            self.application.run_polling(
-                drop_pending_updates=True,
-                close_loop=False,
-                stop_signals=None,
-                allowed_updates=['message', 'callback_query']
-            )
-            
-        except Exception as e:
-            logger.error(f"❌ Bot run error: {e}")
-            raise
+        # Create new application
+        self.app = Application.builder().token(config.BOT_TOKEN).build()
+        
+        # Setup handlers
+        await self._setup_handlers()
     
     async def _clear_updates(self):
-        """Force clear any pending updates"""
+        """Clear webhook and pending updates"""
         try:
-            await self.application.bot.delete_webhook(drop_pending_updates=True)
+            await self.app.bot.delete_webhook(drop_pending_updates=True)
+            await self.app.bot.get_me()  # Test connection
             logger.info("🧹 Cleared webhook and pending updates")
         except Exception as e:
-            logger.warning(f"Failed to clear updates: {e}")
+            logger.warning(f"⚠️ Could not clear updates: {e}")
+    
+    async def _handle_conflict(self, attempt):
+        """Handle conflict with intelligent waiting"""
+        logger.info(f"🔧 Handling conflict (attempt {attempt})...")
+        
+        # Progressive wait times: 5s, 15s, 30s, 60s, 120s...
+        wait_times = [5, 15, 30, 60, 120, 240, 480]
+        wait_time = wait_times[min(attempt - 1, len(wait_times) - 1)]
+        
+        logger.info(f"⏳ Waiting {wait_time} seconds for other instances to timeout...")
+        await asyncio.sleep(wait_time)
+        
+        # Try to force clear webhook
+        try:
+            from telegram import Bot
+            temp_bot = Bot(config.BOT_TOKEN)
+            await temp_bot.delete_webhook(drop_pending_updates=True)
+            logger.info("🧹 Force cleared webhook")
+        except Exception as e:
+            logger.warning(f"⚠️ Force clear failed: {e}")
+
+# Main execution
+async def main():
+    """Main bot execution with conflict protection"""
+    bot = TeraboxBot()
+    await bot.run()
+
+if __name__ == "__main__":
+    asyncio.run(main())
         
