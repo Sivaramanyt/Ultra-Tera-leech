@@ -1,5 +1,5 @@
 """
-Download functionality - Redirect Fixed Version
+Download functionality - Connection Resilient Version
 """
 import aiohttp
 import asyncio
@@ -165,7 +165,7 @@ class TeraboxDownloader:
             return {'success': False, 'error': f'{api_type} API error: {str(e)}'}
     
     async def download_file(self, download_url: str, filename: str, status_msg):
-        """High-speed download with redirect handling"""
+        """Connection-resilient download with retry logic"""
         try:
             filename = self._sanitize_filename(filename)
             file_path = os.path.join(config.DOWNLOAD_DIR, filename)
@@ -174,128 +174,189 @@ class TeraboxDownloader:
             logger.info(f"🚀 Starting download: {filename}")
             logger.info(f"📥 Download URL: {download_url[:100]}...")
             
-            session = await self.get_session()
+            # Retry logic for connection drops
+            max_retries = 3
+            retry_delay = 2
             
-            # Follow redirects to get the final download URL
-            async with session.get(download_url, allow_redirects=True) as response:
-                logger.info(f"📥 Final response status: {response.status}")
-                logger.info(f"🔗 Final URL: {str(response.url)[:100]}...")
-                
-                if response.status == 200:
-                    total_size = int(response.headers.get('content-length', 0))
-                    downloaded = 0
-                    last_update = 0
-                    start_time = asyncio.get_event_loop().time()
+            for attempt in range(max_retries):
+                try:
+                    if attempt > 0:
+                        logger.info(f"🔄 Retry attempt {attempt + 1}/{max_retries}")
+                        await status_msg.edit_text(
+                            f"🔄 **Connection Retry {attempt + 1}/{max_retries}**\n\n"
+                            f"📁 **File:** {filename[:30]}...\n"
+                            f"⏳ Reconnecting to server...",
+                            parse_mode='Markdown'
+                        )
+                        await asyncio.sleep(retry_delay)
                     
-                    logger.info(f"📦 Total size: {self._format_bytes(total_size)}")
+                    session = await self.get_session()
                     
-                    # Large chunks for maximum speed
-                    chunk_size = 512 * 1024  # 512KB chunks
-                    
-                    try:
-                        async with aiofiles.open(file_path, 'wb') as file:
-                            async for chunk in response.content.iter_chunked(chunk_size):
-                                await file.write(chunk)
-                                downloaded += len(chunk)
-                                
-                                # Update progress every 5MB for better performance
-                                if downloaded - last_update >= 5*1024*1024 or downloaded >= total_size:
-                                    last_update = downloaded
-                                    current_time = asyncio.get_event_loop().time()
-                                    elapsed = current_time - start_time
-                                    
-                                    if total_size > 0 and elapsed > 0:
-                                        progress = (downloaded / total_size) * 100
-                                        speed = downloaded / elapsed
-                                        speed_mb = speed / (1024 * 1024)
+                    # Download with connection resilience
+                    async with session.get(download_url, allow_redirects=True) as response:
+                        logger.info(f"📥 Response status (attempt {attempt + 1}): {response.status}")
+                        
+                        if response.status == 200:
+                            total_size = int(response.headers.get('content-length', 0))
+                            downloaded = 0
+                            last_update = 0
+                            start_time = asyncio.get_event_loop().time()
+                            
+                            logger.info(f"📦 Total size: {self._format_bytes(total_size)}")
+                            
+                            # Smaller chunks for better connection stability
+                            chunk_size = 64 * 1024  # 64KB chunks (smaller for stability)
+                            
+                            try:
+                                async with aiofiles.open(file_path, 'wb') as file:
+                                    async for chunk in response.content.iter_chunked(chunk_size):
+                                        await file.write(chunk)
+                                        downloaded += len(chunk)
                                         
-                                        try:
-                                            await status_msg.edit_text(
-                                                f"🚀 **High-Speed Download**\n\n"
-                                                f"📊 **Progress:** {progress:.1f}%\n"
-                                                f"💾 **Downloaded:** {self._format_bytes(downloaded)}\n"
-                                                f"📦 **Total:** {self._format_bytes(total_size)}\n"
-                                                f"⚡ **Speed:** {speed_mb:.1f} MB/s",
-                                                parse_mode='Markdown'
-                                            )
-                                        except:
-                                            pass
+                                        # Update progress every 2MB
+                                        if downloaded - last_update >= 2*1024*1024 or downloaded >= total_size:
+                                            last_update = downloaded
+                                            current_time = asyncio.get_event_loop().time()
+                                            elapsed = current_time - start_time
+                                            
+                                            if total_size > 0 and elapsed > 0:
+                                                progress = (downloaded / total_size) * 100
+                                                speed = downloaded / elapsed
+                                                speed_mb = speed / (1024 * 1024)
+                                                
+                                                try:
+                                                    await status_msg.edit_text(
+                                                        f"🚀 **Stable Download**\n\n"
+                                                        f"📊 **Progress:** {progress:.1f}%\n"
+                                                        f"💾 **Downloaded:** {self._format_bytes(downloaded)}\n"
+                                                        f"📦 **Total:** {self._format_bytes(total_size)}\n"
+                                                        f"⚡ **Speed:** {speed_mb:.1f} MB/s\n"
+                                                        f"🔄 **Attempt:** {attempt + 1}",
+                                                        parse_mode='Markdown'
+                                                    )
+                                                except:
+                                                    pass
+                                
+                                # Verify complete download
+                                actual_size = os.path.getsize(file_path)
+                                logger.info(f"✅ Download completed: {self._format_bytes(actual_size)}")
+                                
+                                if total_size > 0 and actual_size >= total_size * 0.95:  # 95%+ is acceptable
+                                    return file_path
+                                else:
+                                    logger.warning(f"⚠️ Incomplete download: {actual_size}/{total_size} bytes")
+                                    if attempt < max_retries - 1:
+                                        continue  # Try again
+                                    else:
+                                        await status_msg.edit_text(
+                                            "❌ **Incomplete Download**\n\n"
+                                            "File download incomplete after retries.\n"
+                                            "This may be due to server issues.\n\n"
+                                            "Please try again later!",
+                                            parse_mode='Markdown'
+                                        )
+                                        return None
+                                
+                            except (asyncio.IncompleteReadError, aiohttp.ClientPayloadError, ConnectionResetError) as conn_error:
+                                logger.warning(f"⚠️ Connection error (attempt {attempt + 1}): {conn_error}")
+                                
+                                # Clean up partial file
+                                if os.path.exists(file_path):
+                                    os.remove(file_path)
+                                
+                                if attempt < max_retries - 1:
+                                    continue  # Retry
+                                else:
+                                    await status_msg.edit_text(
+                                        "❌ **Connection Failed**\n\n"
+                                        "Download failed due to connection issues.\n"
+                                        "The server may be overloaded.\n\n"
+                                        "Please try again in a few minutes!",
+                                        parse_mode='Markdown'
+                                    )
+                                    return None
+                                    
+                            except Exception as file_error:
+                                logger.error(f"❌ File write error (attempt {attempt + 1}): {file_error}")
+                                
+                                if attempt < max_retries - 1:
+                                    continue  # Retry
+                                else:
+                                    await status_msg.edit_text(
+                                        f"❌ **File Write Error**\n\n"
+                                        f"Could not save file after {max_retries} attempts.\n"
+                                        f"Please try again!",
+                                        parse_mode='Markdown'
+                                    )
+                                    return None
                         
-                        # Verify file was downloaded completely
-                        actual_size = os.path.getsize(file_path)
-                        logger.info(f"✅ Download completed: {self._format_bytes(actual_size)}")
-                        
-                        if total_size > 0 and actual_size < total_size * 0.95:  # Less than 95% downloaded
-                            logger.error(f"❌ Incomplete download: {actual_size}/{total_size} bytes")
+                        elif response.status == 403:
                             await status_msg.edit_text(
-                                "❌ **Incomplete Download**\n\n"
-                                "The file download was incomplete.\n"
-                                "This may be due to connection issues.\n\n"
-                                "Please try again!",
+                                "❌ **Access Forbidden**\n\n"
+                                "The download link has expired.\n"
+                                "Please try with a fresh Terabox link!",
                                 parse_mode='Markdown'
                             )
                             return None
-                        
-                        return file_path
-                        
-                    except Exception as file_error:
-                        logger.error(f"❌ File write error: {file_error}")
+                            
+                        elif response.status == 404:
+                            await status_msg.edit_text(
+                                "❌ **File Not Found**\n\n"
+                                "The file no longer exists.\n"
+                                "Please check the link!",
+                                parse_mode='Markdown'
+                            )
+                            return None
+                            
+                        else:
+                            logger.error(f"❌ HTTP error (attempt {attempt + 1}): {response.status}")
+                            if attempt < max_retries - 1:
+                                continue  # Retry
+                            else:
+                                await status_msg.edit_text(
+                                    f"❌ **Server Error**\n\n"
+                                    f"HTTP {response.status} after {max_retries} attempts.\n"
+                                    f"Please try again later!",
+                                    parse_mode='Markdown'
+                                )
+                                return None
+                                
+                except asyncio.TimeoutError:
+                    logger.error(f"❌ Timeout (attempt {attempt + 1})")
+                    if attempt < max_retries - 1:
+                        continue  # Retry
+                    else:
                         await status_msg.edit_text(
-                            f"❌ **File Write Error**\n\n"
-                            f"Could not save file to storage.\n"
-                            f"Error: {str(file_error)[:50]}...\n\n"
-                            f"Please try again!",
+                            "❌ **Download Timeout**\n\n"
+                            f"Connection timed out after {max_retries} attempts.\n"
+                            "Please try again with better connection!",
                             parse_mode='Markdown'
                         )
                         return None
                         
-                elif response.status == 403:
-                    logger.error("❌ Download forbidden (403)")
-                    await status_msg.edit_text(
-                        "❌ **Access Forbidden**\n\n"
-                        "The download link has expired or is restricted.\n\n"
-                        "Please try again with a fresh Terabox link!",
-                        parse_mode='Markdown'
-                    )
-                    return None
-                    
-                elif response.status == 404:
-                    logger.error("❌ File not found (404)")
-                    await status_msg.edit_text(
-                        "❌ **File Not Found**\n\n"
-                        "The file no longer exists on Terabox servers.\n\n"
-                        "Please check the link and try again!",
-                        parse_mode='Markdown'
-                    )
-                    return None
-                    
-                else:
-                    logger.error(f"❌ HTTP error: {response.status}")
-                    await status_msg.edit_text(
-                        f"❌ **Download Failed**\n\n"
-                        f"Server error: HTTP {response.status}\n\n"
-                        f"Please try again later!",
-                        parse_mode='Markdown'
-                    )
-                    return None
-                    
-        except asyncio.TimeoutError:
-            logger.error("❌ Download timeout")
-            await status_msg.edit_text(
-                "❌ **Download Timeout**\n\n"
-                "The download took too long and timed out.\n\n"
-                "Please try again with a smaller file or better connection!",
-                parse_mode='Markdown'
-            )
+                except Exception as e:
+                    logger.error(f"❌ Download exception (attempt {attempt + 1}): {e}")
+                    if attempt < max_retries - 1:
+                        continue  # Retry
+                    else:
+                        await status_msg.edit_text(
+                            f"❌ **Download Failed**\n\n"
+                            f"Error after {max_retries} attempts:\n"
+                            f"{str(e)[:50]}...\n\n"
+                            f"Please try again!",
+                            parse_mode='Markdown'
+                        )
+                        return None
+            
+            # Should not reach here
             return None
             
         except Exception as e:
-            logger.error(f"❌ Download exception: {e}")
+            logger.error(f"❌ Fatal download error: {e}")
             await status_msg.edit_text(
-                f"❌ **Download Error**\n\n"
-                f"An error occurred during download:\n"
-                f"{str(e)[:100]}...\n\n"
-                f"Please try again!",
+                "❌ **System Error**\n\n"
+                "A system error occurred.\n"
+                "Please try again!",
                 parse_mode='Markdown'
             )
             return None
@@ -330,4 +391,4 @@ class TeraboxDownloader:
         """Close session"""
         if self.session:
             await self.session.close()
-                        
+                    
