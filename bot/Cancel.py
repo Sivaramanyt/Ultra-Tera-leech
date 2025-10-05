@@ -78,3 +78,4 @@ class DownloadCanceler:
 
 # Global instance
 download_canceler = DownloadCanceler()
+        
