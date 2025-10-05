@@ -1,5 +1,5 @@
 """
-Complete Download Module - Compatible with Existing Handlers
+Complete Download Module - Fully Compatible with Existing Handlers
 """
 import os
 import asyncio
@@ -143,14 +143,16 @@ class TeraboxDownloader:
         """Dummy method for compatibility"""
         pass
     
-    async def get_download_info(self, terabox_url: str):
-        """Get download info - wrapper for function"""
+    async def get_download_info(self, terabox_url: str, *args, **kwargs):
+        """Get download info - flexible parameter handling"""
+        # Ignore extra parameters that handlers might pass
         return await get_download_info(terabox_url)
     
-    async def download_with_resume(self, download_url: str, filename: str, status_msg, max_retries=5):
-        """Download with resume - wrapper for function"""
+    async def download_with_resume(self, download_url: str, filename: str, status_msg, *args, **kwargs):
+        """Download with resume - flexible parameter handling"""
+        # Ignore extra parameters like max_retries
         return await download_file(download_url, filename, status_msg)
 
 # Create global instance for backward compatibility
 downloader = TeraboxDownloader()
-                            
+    
