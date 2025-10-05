@@ -1,5 +1,5 @@
 """
-Simple but Reliable Download Module
+Complete Download Module - Compatible with Existing Handlers
 """
 import os
 import asyncio
@@ -127,4 +127,30 @@ async def download_file(download_url: str, filename: str, status_msg):
     # All strategies failed
     logger.error("❌ All download strategies failed")
     return None
+
+# TeraboxDownloader class for backward compatibility
+class TeraboxDownloader:
+    """Compatibility class for existing handlers"""
     
+    def __init__(self):
+        pass
+    
+    async def get_session(self):
+        """Dummy method for compatibility"""
+        pass
+    
+    async def close_session(self):
+        """Dummy method for compatibility"""
+        pass
+    
+    async def get_download_info(self, terabox_url: str):
+        """Get download info - wrapper for function"""
+        return await get_download_info(terabox_url)
+    
+    async def download_with_resume(self, download_url: str, filename: str, status_msg, max_retries=5):
+        """Download with resume - wrapper for function"""
+        return await download_file(download_url, filename, status_msg)
+
+# Create global instance for backward compatibility
+downloader = TeraboxDownloader()
+                            
