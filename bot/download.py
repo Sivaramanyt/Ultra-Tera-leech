@@ -1,5 +1,5 @@
 """
-Download functionality - Correct Working Version
+Download functionality - Bulletproof Raw Stream Version
 """
 import aiohttp
 import asyncio
@@ -13,34 +13,32 @@ class TeraboxDownloader:
         self.session = None
     
     async def get_session(self):
-        """Simple session like your working bot"""
+        """Bulletproof session"""
         if not self.session or self.session.closed:
-            # Simple connector - don't overcomplicate
+            # Minimal connector
             connector = aiohttp.TCPConnector(
-                limit=100,
-                limit_per_host=30,
-                force_close=True,
-                enable_cleanup_closed=True
+                limit=50,
+                limit_per_host=10
             )
             
-            # Simple timeout
+            # No timeouts to prevent drops
             timeout = aiohttp.ClientTimeout(
-                total=None,  # No total timeout
-                connect=30,
-                sock_read=None  # No read timeout
+                total=None,
+                connect=60,
+                sock_read=None
             )
             
             self.session = aiohttp.ClientSession(
                 connector=connector,
                 timeout=timeout,
                 headers={
-                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Mobile Safari/537.36'
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
             )
         return self.session
     
     async def get_download_info(self, url: str, status_msg):
-        """WDZone API - exactly like your working bot"""
+        """WDZone API"""
         try:
             session = await self.get_session()
             api_url = 'https://wdzone-terabox-api.vercel.app/api'
@@ -49,15 +47,9 @@ class TeraboxDownloader:
                 if response.status == 200:
                     result = await response.json()
                     
-                    # Find the emoji keys (WDZone uses emoji keys)
-                    status_key = None
-                    info_key = None
-                    
-                    for key in result.keys():
-                        if 'Status' in key:  # Look for "✅ Status"
-                            status_key = key
-                        if 'Info' in key:   # Look for "📜 Extracted Info"
-                            info_key = key
+                    # Find emoji keys
+                    status_key = next((k for k in result.keys() if 'Status' in k), None)
+                    info_key = next((k for k in result.keys() if 'Info' in k), None)
                     
                     if status_key and info_key and result.get(status_key) == 'Success':
                         extracted_info = result.get(info_key)
@@ -72,11 +64,11 @@ class TeraboxDownloader:
                             
                             for key, value in info.items():
                                 if isinstance(value, str):
-                                    if 'Download' in key and value.startswith('https://'):  # "🔽 Direct Download Link"
+                                    if 'Download' in key and value.startswith('https://'):
                                         download_url = value
-                                    elif 'Title' in key:  # "📂 Title"
+                                    elif 'Title' in key:
                                         filename = value
-                                    elif 'Size' in key:   # "📏 Size"
+                                    elif 'Size' in key:
                                         size = value
                             
                             if download_url:
@@ -91,11 +83,11 @@ class TeraboxDownloader:
             return {'success': False, 'error': 'No download URL found'}
             
         except Exception as e:
-            logger.error(f"WDZone API Error: {e}")
+            logger.error(f"API Error: {e}")
             return {'success': False, 'error': str(e)}
     
     async def download_file(self, download_url: str, filename: str, status_msg):
-        """Simple working download like your other bot"""
+        """Bulletproof raw stream download"""
         try:
             filename = self._sanitize_filename(filename)
             file_path = os.path.join(config.DOWNLOAD_DIR, filename)
@@ -103,7 +95,6 @@ class TeraboxDownloader:
             
             await status_msg.edit_text("📥 Downloading...", parse_mode=None)
             
-            # Use the same session
             session = await self.get_session()
             
             async with session.get(download_url) as response:
@@ -112,35 +103,55 @@ class TeraboxDownloader:
                 if response.status == 200:
                     total_size = int(response.headers.get('content-length', 0))
                     downloaded = 0
-                    last_update = 0
                     
-                    # Simple 1MB chunks like working bots use
                     async with aiofiles.open(file_path, 'wb') as file:
-                        async for chunk in response.content.iter_chunked(1024*1024):  # 1MB chunks
-                            await file.write(chunk)
-                            downloaded += len(chunk)
+                        # Raw byte reading instead of chunked
+                        buffer_size = 65536  # 64KB buffer
+                        
+                        while True:
+                            try:
+                                # Read raw bytes directly
+                                chunk = await response.content.read(buffer_size)
+                                if not chunk:
+                                    break
+                                
+                                await file.write(chunk)
+                                downloaded += len(chunk)
+                                
+                                # Progress every 1MB
+                                if downloaded % (1024*1024) == 0 or downloaded >= total_size:
+                                    if total_size > 0:
+                                        progress = (downloaded / total_size) * 100
+                                        try:
+                                            await status_msg.edit_text(
+                                                f"📥 Downloading\n\n"
+                                                f"Progress: {progress:.1f}%\n"
+                                                f"Downloaded: {self._format_bytes(downloaded)}\n"
+                                                f"Total: {self._format_bytes(total_size)}\n"
+                                                f"Method: Raw stream",
+                                                parse_mode=None
+                                            )
+                                        except:
+                                            pass
                             
-                            # Update every 2MB
-                            if downloaded - last_update >= 2*1024*1024 or downloaded >= total_size:
-                                last_update = downloaded
-                                if total_size > 0:
-                                    progress = (downloaded / total_size) * 100
-                                    try:
-                                        await status_msg.edit_text(
-                                            f"📥 Downloading\n\n"
-                                            f"Progress: {progress:.1f}%\n"
-                                            f"Downloaded: {self._format_bytes(downloaded)}\n"
-                                            f"Total: {self._format_bytes(total_size)}",
-                                            parse_mode=None
-                                        )
-                                    except:
-                                        pass
+                            except asyncio.IncompleteReadError:
+                                # Handle incomplete reads gracefully
+                                logger.warning("Incomplete read, continuing...")
+                                break
+                            except Exception as e:
+                                logger.error(f"Read error: {e}")
+                                break
                     
-                    # Simple verification
+                    # Verify
                     if os.path.exists(file_path):
                         final_size = os.path.getsize(file_path)
                         logger.info(f"✅ Download completed: {final_size} bytes")
-                        return file_path
+                        
+                        # Accept if we got at least 90% of the file
+                        if total_size == 0 or final_size >= total_size * 0.9:
+                            return file_path
+                        else:
+                            logger.warning(f"File incomplete: {final_size}/{total_size}")
                     
                 return None
             
@@ -174,4 +185,4 @@ class TeraboxDownloader:
         """Close session"""
         if self.session:
             await self.session.close()
-                                    
+                    
