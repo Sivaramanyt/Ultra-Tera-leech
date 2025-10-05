@@ -1,5 +1,5 @@
 """
-Download functionality - Clean Optimized Version
+Download functionality - Debug Enhanced Version
 """
 import aiohttp
 import asyncio
@@ -62,9 +62,11 @@ class TeraboxDownloader:
                     result = await self._try_api_request(api_config, url)
                     
                     if result['success']:
+                        logger.info(f"✅ API Success: {result['filename']} ({result['size']})")
                         return result
                         
                 except Exception as e:
+                    logger.error(f"API {api_config['type']} error: {e}")
                     continue
             
             return {'success': False, 'error': 'All APIs failed'}
@@ -79,12 +81,17 @@ class TeraboxDownloader:
             api_url = api_config['url']
             api_type = api_config['type']
             
+            logger.info(f"🔍 Trying {api_type} API: {api_url}")
+            
             if api_type == 'wdzone':
                 params = {'url': terabox_url}
                 
                 async with session.get(api_url, params=params) as response:
+                    logger.info(f"📥 API Response status: {response.status}")
+                    
                     if response.status == 200:
                         result = await response.json()
+                        logger.info(f"📋 API response keys: {list(result.keys())}")
                         
                         # Find status and info fields
                         status_field = None
@@ -114,6 +121,7 @@ class TeraboxDownloader:
                                         if isinstance(value, str):
                                             if 'download' in key.lower() and ('http' in value or 'https' in value):
                                                 download_url = value
+                                                logger.info(f"🔗 Found download URL: {download_url[:50]}...")
                                             
                                             if 'title' in key.lower() or 'name' in key.lower():
                                                 title = value
@@ -128,12 +136,19 @@ class TeraboxDownloader:
                                             'filename': title,
                                             'size': size
                                         }
+                                    else:
+                                        logger.error("❌ No download URL found in API response")
+                        else:
+                            logger.error(f"❌ API returned non-success status: {result.get(status_field)}")
+                    else:
+                        logger.error(f"❌ API HTTP error: {response.status}")
                         
             elif api_type == 'qtcloud':
                 params = {'url': terabox_url}
                 async with session.get(api_url, params=params) as response:
                     if response.status == 200:
                         result = await response.json()
+                        logger.info(f"QTCloud response: {result}")
                         
                         if result.get('download_url'):
                             return {
@@ -146,60 +161,163 @@ class TeraboxDownloader:
             return {'success': False, 'error': f'No download URL from {api_type}'}
             
         except Exception as e:
+            logger.error(f"💥 API {api_type} exception: {e}")
             return {'success': False, 'error': f'{api_type} API error: {str(e)}'}
     
     async def download_file(self, download_url: str, filename: str, status_msg):
-        """High-speed optimized download"""
+        """High-speed download with detailed error handling"""
         try:
             filename = self._sanitize_filename(filename)
             file_path = os.path.join(config.DOWNLOAD_DIR, filename)
             os.makedirs(config.DOWNLOAD_DIR, exist_ok=True)
             
+            logger.info(f"🚀 Starting download: {filename}")
+            logger.info(f"📥 Download URL: {download_url[:100]}...")
+            
             session = await self.get_session()
             
+            # Test the download URL first
+            try:
+                async with session.head(download_url) as head_response:
+                    logger.info(f"🔍 HEAD request status: {head_response.status}")
+                    logger.info(f"📊 Content-Length: {head_response.headers.get('content-length', 'Unknown')}")
+                    logger.info(f"📄 Content-Type: {head_response.headers.get('content-type', 'Unknown')}")
+                    
+                    if head_response.status not in [200, 206]:
+                        logger.error(f"❌ HEAD request failed with status {head_response.status}")
+                        await status_msg.edit_text(
+                            f"❌ **Download URL Invalid**\n\n"
+                            f"Server returned status: {head_response.status}\n"
+                            f"The download link may have expired.\n\n"
+                            f"Please try again with a fresh link!",
+                            parse_mode='Markdown'
+                        )
+                        return None
+            except Exception as head_error:
+                logger.warning(f"⚠️ HEAD request failed: {head_error}")
+                # Continue with GET request anyway
+            
+            # Proceed with actual download
             async with session.get(download_url) as response:
+                logger.info(f"📥 GET request status: {response.status}")
+                
                 if response.status == 200:
                     total_size = int(response.headers.get('content-length', 0))
                     downloaded = 0
                     last_update = 0
                     start_time = asyncio.get_event_loop().time()
                     
+                    logger.info(f"📦 Total size: {self._format_bytes(total_size)}")
+                    
                     # Large chunks for maximum speed
                     chunk_size = 512 * 1024  # 512KB chunks
                     
-                    async with aiofiles.open(file_path, 'wb') as file:
-                        async for chunk in response.content.iter_chunked(chunk_size):
-                            await file.write(chunk)
-                            downloaded += len(chunk)
-                            
-                            # Update progress every 5MB for better performance
-                            if downloaded - last_update >= 5*1024*1024 or downloaded >= total_size:
-                                last_update = downloaded
-                                current_time = asyncio.get_event_loop().time()
-                                elapsed = current_time - start_time
+                    try:
+                        async with aiofiles.open(file_path, 'wb') as file:
+                            async for chunk in response.content.iter_chunked(chunk_size):
+                                await file.write(chunk)
+                                downloaded += len(chunk)
                                 
-                                if total_size > 0 and elapsed > 0:
-                                    progress = (downloaded / total_size) * 100
-                                    speed = downloaded / elapsed
-                                    speed_mb = speed / (1024 * 1024)
+                                # Update progress every 5MB for better performance
+                                if downloaded - last_update >= 5*1024*1024 or downloaded >= total_size:
+                                    last_update = downloaded
+                                    current_time = asyncio.get_event_loop().time()
+                                    elapsed = current_time - start_time
                                     
-                                    try:
-                                        await status_msg.edit_text(
-                                            f"🚀 **High-Speed Download**\n\n"
-                                            f"📊 **Progress:** {progress:.1f}%\n"
-                                            f"💾 **Downloaded:** {self._format_bytes(downloaded)}\n"
-                                            f"📦 **Total:** {self._format_bytes(total_size)}\n"
-                                            f"⚡ **Speed:** {speed_mb:.1f} MB/s",
-                                            parse_mode='Markdown'
-                                        )
-                                    except:
-                                        pass
-                    
-                    return file_path
-                else:
+                                    if total_size > 0 and elapsed > 0:
+                                        progress = (downloaded / total_size) * 100
+                                        speed = downloaded / elapsed
+                                        speed_mb = speed / (1024 * 1024)
+                                        
+                                        try:
+                                            await status_msg.edit_text(
+                                                f"🚀 **High-Speed Download**\n\n"
+                                                f"📊 **Progress:** {progress:.1f}%\n"
+                                                f"💾 **Downloaded:** {self._format_bytes(downloaded)}\n"
+                                                f"📦 **Total:** {self._format_bytes(total_size)}\n"
+                                                f"⚡ **Speed:** {speed_mb:.1f} MB/s",
+                                                parse_mode='Markdown'
+                                            )
+                                        except:
+                                            pass
+                        
+                        # Verify file was downloaded completely
+                        actual_size = os.path.getsize(file_path)
+                        logger.info(f"✅ Download completed: {self._format_bytes(actual_size)}")
+                        
+                        if total_size > 0 and actual_size < total_size * 0.95:  # Less than 95% downloaded
+                            logger.error(f"❌ Incomplete download: {actual_size}/{total_size} bytes")
+                            await status_msg.edit_text(
+                                "❌ **Incomplete Download**\n\n"
+                                "The file download was incomplete.\n"
+                                "This may be due to connection issues.\n\n"
+                                "Please try again!",
+                                parse_mode='Markdown'
+                            )
+                            return None
+                        
+                        return file_path
+                        
+                    except Exception as file_error:
+                        logger.error(f"❌ File write error: {file_error}")
+                        await status_msg.edit_text(
+                            f"❌ **File Write Error**\n\n"
+                            f"Could not save file to storage.\n"
+                            f"Error: {str(file_error)[:50]}...\n\n"
+                            f"Please try again!",
+                            parse_mode='Markdown'
+                        )
+                        return None
+                        
+                elif response.status == 403:
+                    logger.error("❌ Download forbidden (403)")
+                    await status_msg.edit_text(
+                        "❌ **Access Forbidden**\n\n"
+                        "The download link has expired or is restricted.\n\n"
+                        "Please try again with a fresh Terabox link!",
+                        parse_mode='Markdown'
+                    )
                     return None
                     
+                elif response.status == 404:
+                    logger.error("❌ File not found (404)")
+                    await status_msg.edit_text(
+                        "❌ **File Not Found**\n\n"
+                        "The file no longer exists on Terabox servers.\n\n"
+                        "Please check the link and try again!",
+                        parse_mode='Markdown'
+                    )
+                    return None
+                    
+                else:
+                    logger.error(f"❌ HTTP error: {response.status}")
+                    await status_msg.edit_text(
+                        f"❌ **Download Failed**\n\n"
+                        f"Server error: HTTP {response.status}\n\n"
+                        f"Please try again later!",
+                        parse_mode='Markdown'
+                    )
+                    return None
+                    
+        except asyncio.TimeoutError:
+            logger.error("❌ Download timeout")
+            await status_msg.edit_text(
+                "❌ **Download Timeout**\n\n"
+                "The download took too long and timed out.\n\n"
+                "Please try again with a smaller file or better connection!",
+                parse_mode='Markdown'
+            )
+            return None
+            
         except Exception as e:
+            logger.error(f"❌ Download exception: {e}")
+            await status_msg.edit_text(
+                f"❌ **Download Error**\n\n"
+                f"An error occurred during download:\n"
+                f"{str(e)[:100]}...\n\n"
+                f"Please try again!",
+                parse_mode='Markdown'
+            )
             return None
     
     def _sanitize_filename(self, filename: str) -> str:
@@ -224,11 +342,12 @@ class TeraboxDownloader:
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
+                logger.info(f"🧹 Cleaned up: {file_path}")
         except Exception as e:
-            pass
+            logger.error(f"Cleanup error: {e}")
     
     async def close(self):
         """Close session"""
         if self.session:
             await self.session.close()
-                                        
+        
