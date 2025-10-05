@@ -1,10 +1,11 @@
 """
-Download functionality - Super Simple Working Version
+Download functionality - Safe Markdown Version
 """
 import aiohttp
 import asyncio
 import aiofiles
 import os
+import re
 from loguru import logger
 import config
 
@@ -37,11 +38,11 @@ class TeraboxDownloader:
         return self.session
     
     async def get_download_info(self, url: str, status_msg):
-        """Get download URL from WDZone API - Super Simple"""
+        """Get download URL from WDZone API"""
         try:
             await status_msg.edit_text(
-                "📡 **Getting download info...**\n\n⚡ Please wait...",
-                parse_mode='Markdown'
+                "📡 Getting download info...\n\n⚡ Please wait...",
+                parse_mode=None  # No Markdown
             )
             
             session = await self.get_session()
@@ -94,7 +95,7 @@ class TeraboxDownloader:
             return {'success': False, 'error': str(e)}
     
     async def download_file(self, download_url: str, filename: str, status_msg):
-        """Simple download with big chunks"""
+        """Safe download with no Markdown parsing errors"""
         try:
             filename = self._sanitize_filename(filename)
             file_path = os.path.join(config.DOWNLOAD_DIR, filename)
@@ -104,9 +105,12 @@ class TeraboxDownloader:
             if os.path.exists(file_path):
                 os.remove(file_path)
             
+            # Clean filename for display (remove special characters that break Markdown)
+            safe_filename = re.sub(r'[^\w\s.-]', '', filename)[:30]
+            
             await status_msg.edit_text(
-                f"🚀 **Starting Download**\n\n📁 **File:** {filename[:30]}...",
-                parse_mode='Markdown'
+                f"🚀 Starting Download\n\n📁 File: {safe_filename}...",
+                parse_mode=None  # No Markdown parsing
             )
             
             # Simple download session
@@ -129,7 +133,7 @@ class TeraboxDownloader:
                         total_size = int(response.headers.get('content-length', 0))
                         downloaded = 0
                         
-                        # Big chunks for speed
+                        # Large chunks for speed
                         chunk_size = 1024 * 1024  # 1MB chunks
                         
                         async with aiofiles.open(file_path, 'wb') as file:
@@ -137,51 +141,50 @@ class TeraboxDownloader:
                                 await file.write(chunk)
                                 downloaded += len(chunk)
                                 
-                                # Update every 5MB
+                                # Update every 5MB - NO MARKDOWN
                                 if downloaded % (5 * 1024 * 1024) < chunk_size or downloaded >= total_size:
                                     if total_size > 0:
                                         progress = (downloaded / total_size) * 100
                                         try:
                                             await status_msg.edit_text(
-                                                f"🚀 **Downloading**\n\n"
-                                                f"📊 **Progress:** {progress:.1f}%\n"
-                                                f"💾 **Downloaded:** {self._format_bytes(downloaded)}\n"
-                                                f"📦 **Total:** {self._format_bytes(total_size)}",
-                                                parse_mode='Markdown'
+                                                f"🚀 Downloading\n\n"
+                                                f"📊 Progress: {progress:.1f}%\n"
+                                                f"💾 Downloaded: {self._format_bytes(downloaded)}\n"
+                                                f"📦 Total: {self._format_bytes(total_size)}",
+                                                parse_mode=None  # No Markdown
                                             )
                                         except:
                                             pass
                         
-                        # Check if download completed
+                        # Check completion
                         if os.path.exists(file_path):
                             final_size = os.path.getsize(file_path)
-                            if total_size == 0 or final_size >= total_size * 0.9:  # 90%+ is OK
+                            if total_size == 0 or final_size >= total_size * 0.9:
                                 logger.info(f"✅ Download success: {final_size} bytes")
                                 return file_path
                         
                         await status_msg.edit_text(
-                            "❌ **Download incomplete**\n\nPlease try again!",
-                            parse_mode='Markdown'
+                            "❌ Download incomplete\n\nPlease try again!",
+                            parse_mode=None
                         )
                         return None
                     else:
                         await status_msg.edit_text(
-                            f"❌ **Server Error {response.status}**\n\nPlease try again!",
-                            parse_mode='Markdown'
+                            f"❌ Server Error {response.status}\n\nPlease try again!",
+                            parse_mode=None
                         )
                         return None
                         
         except Exception as e:
             logger.error(f"Download error: {e}")
             await status_msg.edit_text(
-                "❌ **Download failed**\n\nPlease try again!",
-                parse_mode='Markdown'
+                "❌ Download failed\n\nPlease try again!",
+                parse_mode=None
             )
             return None
     
     def _sanitize_filename(self, filename: str) -> str:
-        """Clean filename"""
-        import re
+        """Clean filename for file system"""
         filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
         if len(filename) > 200:
             name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
@@ -189,7 +192,7 @@ class TeraboxDownloader:
         return filename
     
     def _format_bytes(self, bytes_count: int) -> str:
-        """Format bytes"""
+        """Format bytes to human readable"""
         for unit in ['B', 'KB', 'MB', 'GB']:
             if bytes_count < 1024.0:
                 return f"{bytes_count:.1f} {unit}"
@@ -208,4 +211,4 @@ class TeraboxDownloader:
         """Close session"""
         if self.session:
             await self.session.close()
-    
+            
