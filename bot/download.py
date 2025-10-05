@@ -1,5 +1,5 @@
 """
-Download functionality - Multiple APIs + Ultra Stable
+Download functionality - WDZone Only Fast Version
 """
 import aiohttp
 import asyncio
@@ -13,10 +13,19 @@ class TeraboxDownloader:
         self.session = None
     
     async def get_session(self):
-        """Get HTTP session"""
+        """Get optimized HTTP session for speed"""
         if not self.session or self.session.closed:
-            connector = aiohttp.TCPConnector()
-            timeout = aiohttp.ClientTimeout(total=300)
+            connector = aiohttp.TCPConnector(
+                limit=10,
+                limit_per_host=5,
+                ttl_dns_cache=300,
+                use_dns_cache=True,
+                keepalive_timeout=120,
+                enable_cleanup_closed=True
+            )
+            
+            timeout = aiohttp.ClientTimeout(total=600)  # 10 minutes
+            
             self.session = aiohttp.ClientSession(
                 connector=connector,
                 timeout=timeout,
@@ -27,193 +36,169 @@ class TeraboxDownloader:
         return self.session
     
     async def get_download_info(self, url: str, status_msg):
-        """Try multiple APIs for better success rate"""
-        apis = [
-            {
-                'name': 'WDZone',
-                'url': 'https://wdzone-terabox-api.vercel.app/api',
-                'params': {'url': url}
-            },
-            {
-                'name': 'TeraboxDL',
-                'url': 'https://teraboxdl.qtcloud.workers.dev/api', 
-                'params': {'url': url}
-            }
-        ]
-        
-        for i, api in enumerate(apis):
-            try:
-                await status_msg.edit_text(
-                    f"📡 Trying API {i+1}/{len(apis)}\n\n"
-                    f"🔄 {api['name']} server...",
-                    parse_mode=None
-                )
-                
-                result = await self._try_single_api(api, url)
-                if result['success']:
-                    logger.info(f"✅ {api['name']} API Success - File: {result['filename']}, Size: {result['size']}")
-                    return result
-                    
-            except Exception as e:
-                logger.error(f"{api['name']} API failed: {e}")
-                continue
-        
-        return {'success': False, 'error': 'All APIs failed'}
-    
-    async def _try_single_api(self, api_config: dict, terabox_url: str):
-        """Try single API"""
+        """WDZone API only - Fast extraction"""
         try:
-            session = await self.get_session()
+            await status_msg.edit_text("📡 Getting download info...", parse_mode=None)
             
-            async with session.get(api_config['url'], params=api_config['params']) as response:
+            session = await self.get_session()
+            api_url = 'https://wdzone-terabox-api.vercel.app/api'
+            
+            async with session.get(api_url, params={'url': url}) as response:
                 if response.status == 200:
                     result = await response.json()
                     
-                    # WDZone format
-                    if api_config['name'] == 'WDZone':
-                        status_field = next((k for k in result.keys() if 'status' in k.lower()), None)
-                        info_field = next((k for k in result.keys() if 'info' in k.lower()), None)
-                        
-                        if status_field and info_field and result.get(status_field) == 'Success':
-                            extracted_info = result.get(info_field)
-                            if isinstance(extracted_info, list) and len(extracted_info) > 0:
-                                info = extracted_info[0]
-                                
-                                download_url = None
-                                filename = 'download'
-                                size = 'Unknown'
-                                
-                                for key, value in info.items():
-                                    if isinstance(value, str):
-                                        if 'download' in key.lower() and value.startswith('https://'):
-                                            download_url = value
-                                        elif 'title' in key.lower():
-                                            filename = value
-                                        elif 'size' in key.lower():
-                                            size = value
-                                
-                                if download_url:
-                                    return {
-                                        'success': True,
-                                        'download_url': download_url,
-                                        'filename': filename,
-                                        'size': size
-                                    }
+                    # WDZone format - find status and info fields
+                    status_field = None
+                    info_field = None
                     
-                    # TeraboxDL format  
-                    elif api_config['name'] == 'TeraboxDL':
-                        if result.get('download_url'):
-                            return {
-                                'success': True,
-                                'download_url': result['download_url'],
-                                'filename': result.get('filename', 'download'),
-                                'size': result.get('size', 'Unknown')
-                            }
+                    for key in result.keys():
+                        if 'status' in key.lower():
+                            status_field = key
+                        if 'info' in key.lower():
+                            info_field = key
+                    
+                    if status_field and info_field and result.get(status_field) == 'Success':
+                        extracted_info = result.get(info_field)
+                        
+                        if isinstance(extracted_info, list) and len(extracted_info) > 0:
+                            info = extracted_info[0]
+                            
+                            # Extract file information
+                            download_url = None
+                            filename = 'download'
+                            size = 'Unknown'
+                            
+                            for key, value in info.items():
+                                if isinstance(value, str):
+                                    if 'download' in key.lower() and value.startswith('https://'):
+                                        download_url = value
+                                    elif 'title' in key.lower():
+                                        filename = value
+                                    elif 'size' in key.lower():
+                                        size = value
+                            
+                            if download_url:
+                                logger.info(f"✅ WDZone API Success - File: {filename}, Size: {size}")
+                                return {
+                                    'success': True,
+                                    'download_url': download_url,
+                                    'filename': filename,
+                                    'size': size
+                                }
             
-            return {'success': False, 'error': f'{api_config["name"]} - No download URL'}
+            return {'success': False, 'error': 'No download URL found'}
             
         except Exception as e:
-            return {'success': False, 'error': f'{api_config["name"]} error: {str(e)}'}
+            logger.error(f"WDZone API Error: {e}")
+            return {'success': False, 'error': str(e)}
     
     async def download_file(self, download_url: str, filename: str, status_msg):
-        """Ultra-stable micro-chunk download with multiple retries"""
+        """Fast optimized download - Large chunks for speed"""
         try:
             filename = self._sanitize_filename(filename)
             file_path = os.path.join(config.DOWNLOAD_DIR, filename)
             os.makedirs(config.DOWNLOAD_DIR, exist_ok=True)
             
-            # Multiple attempts with different chunk sizes
-            chunk_sizes = [4096, 2048, 1024]  # 4KB, 2KB, 1KB
-            max_retries = 3
+            # Remove old file
+            if os.path.exists(file_path):
+                os.remove(file_path)
             
-            for attempt in range(max_retries):
-                for chunk_size in chunk_sizes:
-                    try:
+            await status_msg.edit_text("📥 Starting fast download...", parse_mode=None)
+            
+            # Fast download session with optimized settings
+            connector = aiohttp.TCPConnector(
+                limit=3,
+                limit_per_host=3,
+                keepalive_timeout=300,  # 5 minutes
+                enable_cleanup_closed=True
+            )
+            
+            timeout = aiohttp.ClientTimeout(
+                total=1800,    # 30 minutes
+                connect=30,    # 30 seconds to connect
+                sock_read=120  # 2 minutes between chunks
+            )
+            
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout,
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            ) as session:
+                
+                async with session.get(download_url, allow_redirects=True) as response:
+                    if response.status == 200:
+                        total_size = int(response.headers.get('content-length', 0))
+                        downloaded = 0
+                        last_update = 0
+                        start_time = asyncio.get_event_loop().time()
+                        
+                        # Large chunks for maximum speed
+                        chunk_size = 512 * 1024  # 512KB chunks for speed
+                        
+                        async with aiofiles.open(file_path, 'wb') as file:
+                            async for chunk in response.content.iter_chunked(chunk_size):
+                                await file.write(chunk)
+                                downloaded += len(chunk)
+                                
+                                # Update every 2MB for better speed
+                                if downloaded - last_update >= 2*1024*1024 or downloaded >= total_size:
+                                    last_update = downloaded
+                                    current_time = asyncio.get_event_loop().time()
+                                    elapsed = current_time - start_time
+                                    
+                                    if total_size > 0 and elapsed > 0:
+                                        progress = (downloaded / total_size) * 100
+                                        speed = downloaded / elapsed
+                                        speed_mb = speed / (1024 * 1024)
+                                        eta = (total_size - downloaded) / speed if speed > 0 else 0
+                                        eta_min = eta / 60
+                                        
+                                        try:
+                                            await status_msg.edit_text(
+                                                f"📥 Fast Download\n\n"
+                                                f"📊 Progress: {progress:.1f}%\n"
+                                                f"💾 Downloaded: {self._format_bytes(downloaded)}\n"
+                                                f"📦 Total: {self._format_bytes(total_size)}\n"
+                                                f"⚡ Speed: {speed_mb:.1f} MB/s\n"
+                                                f"⏱️ ETA: {eta_min:.1f} min\n"
+                                                f"🔧 512KB chunks",
+                                                parse_mode=None
+                                            )
+                                        except:
+                                            pass
+                        
+                        # Verify download
+                        if os.path.exists(file_path):
+                            final_size = os.path.getsize(file_path)
+                            if total_size == 0 or final_size >= total_size * 0.95:
+                                logger.info(f"✅ Fast download completed: {final_size} bytes")
+                                return file_path
+                        
                         await status_msg.edit_text(
-                            f"📥 Download Attempt {attempt+1}/{max_retries}\n\n"
-                            f"📁 File: {filename[:30]}...\n"
-                            f"🔧 Chunk: {chunk_size//1024}KB\n"
-                            f"⏳ Starting...",
+                            "❌ Download incomplete\n\nFile may be corrupted. Try again!",
                             parse_mode=None
                         )
-                        
-                        # Remove old file
-                        if os.path.exists(file_path):
-                            os.remove(file_path)
-                        
-                        # Micro timeout per attempt
-                        connector = aiohttp.TCPConnector(limit=1, limit_per_host=1)
-                        timeout = aiohttp.ClientTimeout(
-                            total=300,    # 5 minutes total
-                            connect=10,   # 10 seconds to connect
-                            sock_read=30  # 30 seconds between chunks
+                        return None
+                    else:
+                        await status_msg.edit_text(
+                            f"❌ Server Error {response.status}\n\nTry again later!",
+                            parse_mode=None
                         )
+                        return None
                         
-                        async with aiohttp.ClientSession(
-                            connector=connector,
-                            timeout=timeout,
-                            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-                        ) as session:
-                            
-                            async with session.get(download_url, allow_redirects=True) as response:
-                                if response.status == 200:
-                                    total_size = int(response.headers.get('content-length', 0))
-                                    downloaded = 0
-                                    
-                                    async with aiofiles.open(file_path, 'wb') as file:
-                                        async for chunk in response.content.iter_chunked(chunk_size):
-                                            await file.write(chunk)
-                                            downloaded += len(chunk)
-                                            
-                                            # Update every 500KB
-                                            if downloaded % (500*1024) < chunk_size or downloaded >= total_size:
-                                                if total_size > 0:
-                                                    progress = (downloaded / total_size) * 100
-                                                    try:
-                                                        await status_msg.edit_text(
-                                                            f"📥 Micro-Download\n\n"
-                                                            f"📊 Progress: {progress:.1f}%\n"
-                                                            f"💾 Downloaded: {self._format_bytes(downloaded)}\n"
-                                                            f"📦 Total: {self._format_bytes(total_size)}\n"
-                                                            f"🔧 Chunk: {chunk_size//1024}KB\n"
-                                                            f"🔄 Try: {attempt+1}",
-                                                            parse_mode=None
-                                                        )
-                                                    except:
-                                                        pass
-                                    
-                                    # Verify success
-                                    if os.path.exists(file_path):
-                                        final_size = os.path.getsize(file_path)
-                                        if total_size == 0 or final_size >= total_size * 0.9:
-                                            logger.info(f"✅ Download success with {chunk_size//1024}KB chunks: {final_size} bytes")
-                                            return file_path
-                        
-                        # If we get here, try smaller chunks
-                        continue
-                        
-                    except Exception as e:
-                        logger.warning(f"Attempt {attempt+1} with {chunk_size//1024}KB failed: {e}")
-                        continue
-                
-                # Wait before retry
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(3)
-            
-            # All attempts failed
+        except asyncio.TimeoutError:
             await status_msg.edit_text(
-                "❌ All Download Attempts Failed\n\n"
-                "The Terabox servers are unstable.\n"
-                "Please try:\n"
-                "• Different Terabox link\n"
-                "• Again in 10-15 minutes\n"
-                "• Smaller file size",
+                "❌ Download Timeout\n\nTerabox servers are slow today.\nTry again in 10-15 minutes!",
                 parse_mode=None
             )
             return None
-                    
+            
         except Exception as e:
             logger.error(f"Download error: {e}")
+            await status_msg.edit_text(
+                "❌ Download Failed\n\nTerabox servers are unstable.\nPlease try again later!",
+                parse_mode=None
+            )
             return None
     
     def _sanitize_filename(self, filename: str) -> str:
@@ -245,4 +230,4 @@ class TeraboxDownloader:
         """Close session"""
         if self.session:
             await self.session.close()
-        
+                                    
