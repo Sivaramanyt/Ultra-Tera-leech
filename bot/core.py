@@ -1,12 +1,22 @@
 """
-Simple Working Bot Core with Conflict Resolution
+Fixed Bot Core - Health Check + Event Loop Safe
 """
 import asyncio
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import signal
+import sys
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram.error import Conflict, TimedOut, NetworkError
-from telegram import Update
 from loguru import logger
 import config
+
+# Global variable to handle graceful shutdown
+should_stop = False
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals"""
+    global should_stop
+    should_stop = True
+    logger.info("🛑 Shutdown signal received")
 
 async def _setup_handlers(app):
     """Setup all bot handlers"""
@@ -33,25 +43,7 @@ async def _setup_handlers(app):
         handlers.handle_text
     ))
     
-    # Add error handler for conflicts
-    app.add_error_handler(_error_handler)
-    
     logger.info(f"✅ Handlers ready for terabox_bot")
-
-async def _error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle bot errors including conflicts"""
-    error = context.error
-    
-    if isinstance(error, Conflict):
-        logger.error(f"Bot error: {error}")
-        logger.warning("Conflict detected - another bot instance may be running")
-        # The conflict will be handled by the retry mechanism in main()
-        return
-    elif isinstance(error, (TimedOut, NetworkError)):
-        logger.warning(f"Network error (will retry): {error}")
-        return
-    else:
-        logger.error(f"Unexpected error: {error}")
 
 async def _clear_updates(app):
     """Clear webhook and pending updates"""
@@ -61,83 +53,102 @@ async def _clear_updates(app):
     except Exception as e:
         logger.warning(f"Could not clear updates: {e}")
 
-async def _handle_conflict(attempt):
-    """Handle conflict with progressive backoff"""
-    logger.info(f"🔧 Handling conflict (attempt {attempt})...")
+async def start_health_server():
+    """Start simple HTTP health server for Koyeb"""
+    from aiohttp import web
     
-    # Progressive wait times: 5s, 15s, 30s, 60s, 120s...
-    wait_times = [5, 15, 30, 60, 120, 240]
-    wait_time = wait_times[min(attempt - 1, len(wait_times) - 1)]
+    async def health_check(request):
+        return web.Response(text="Bot is healthy", status=200)
     
-    logger.info(f"⏳ Waiting {wait_time} seconds for other instances to timeout...")
-    await asyncio.sleep(wait_time)
+    app = web.Application()
+    app.router.add_get('/health', health_check)
+    app.router.add_get('/', health_check)
     
-    # Try to force clear webhook
-    try:
-        from telegram import Bot
-        temp_bot = Bot(config.BOT_TOKEN)
-        await temp_bot.delete_webhook(drop_pending_updates=True)
-        logger.info("🧹 Force cleared webhook")
-    except Exception as e:
-        logger.warning(f"⚠️ Force clear failed: {e}")
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 8000)
+    await site.start()
+    logger.info("🏥 Health server started on port 8000")
+    return runner
 
 async def main():
-    """Main bot function with conflict handling"""
-    max_retries = 8
-    base_delay = 3
+    """Main bot function - Simple and Reliable"""
+    global should_stop
     
-    for attempt in range(max_retries):
-        try:
-            logger.info(f"🤖 Starting terabox_bot (attempt {attempt + 1}/{max_retries})...")
+    # Setup signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    app = None
+    health_runner = None
+    
+    try:
+        logger.info("🤖 Starting terabox_bot...")
+        
+        # Start health server for Koyeb
+        health_runner = await start_health_server()
+        
+        # Create application
+        app = Application.builder().token(config.BOT_TOKEN).build()
+        
+        # Setup handlers
+        await _setup_handlers(app)
+        
+        # Clear updates
+        await _clear_updates(app)
+        
+        # Start bot with conflict handling
+        logger.info("🚀 Starting Terabox Leech Bot...")
+        
+        # Configure polling with conflict resistance
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(
+            drop_pending_updates=True,
+            allowed_updates=['message', 'callback_query'],
+            poll_interval=1.0,
+            timeout=20,
+            bootstrap_retries=3,
+            read_timeout=10,
+            write_timeout=10,
+            connect_timeout=10,
+            pool_timeout=10
+        )
+        
+        logger.info("✅ Bot started successfully")
+        
+        # Keep running until signal received
+        while not should_stop:
+            await asyncio.sleep(1)
             
-            # Create application
-            app = Application.builder().token(config.BOT_TOKEN).build()
-            
-            # Setup handlers
-            await _setup_handlers(app)
-            
-            # Clear updates
-            await _clear_updates(app)
-            
-            # Start bot with conflict-resistant settings
-            logger.info("🚀 Starting Terabox Leech Bot...")
-            await app.run_polling(
-                drop_pending_updates=True,
-                allowed_updates=['message', 'callback_query'],
-                poll_interval=2.0,        # 2 second polling interval
-                timeout=20,               # 20 second timeout
-                bootstrap_retries=5,      # More bootstrap retries
-                read_timeout=15,          # Longer read timeout
-                write_timeout=15,         # Longer write timeout
-                connect_timeout=15,       # Longer connect timeout
-                pool_timeout=15           # Longer pool timeout
-            )
-            
-            # If we reach here, bot started successfully
-            return
-            
-        except Conflict as e:
-            logger.warning(f"🔄 Conflict on attempt {attempt + 1}: {e}")
-            
-            if attempt < max_retries - 1:
-                await _handle_conflict(attempt + 1)
-            else:
-                logger.error("❌ Max conflict retries reached")
-                # Try one last time with longer wait
-                logger.info("🔄 Final attempt with extended wait...")
-                await asyncio.sleep(300)  # 5 minutes
-                # Don't break here, let it try one more time
+    except Conflict as e:
+        logger.error(f"🔄 Conflict detected: {e}")
+        logger.info("⏳ Waiting 30 seconds and restarting...")
+        await asyncio.sleep(30)
+        # Exit and let Koyeb restart
+        sys.exit(1)
+        
+    except Exception as e:
+        logger.error(f"❌ Bot startup failed: {e}")
+        sys.exit(1)
+        
+    finally:
+        # Cleanup
+        if app:
+            try:
+                await app.updater.stop()
+                await app.stop()
+                await app.shutdown()
+            except:
+                pass
                 
-        except Exception as e:
-            logger.error(f"❌ Error on attempt {attempt + 1}: {e}")
-            
-            if attempt < max_retries - 1:
-                wait_time = base_delay * (2 ** attempt)  # Exponential backoff
-                logger.info(f"⏳ Retrying in {wait_time} seconds...")
-                await asyncio.sleep(wait_time)
-            else:
-                logger.error("❌ Max retries reached")
-                raise
+        if health_runner:
+            try:
+                await health_runner.cleanup()
+            except:
+                pass
+                
+        logger.info("👋 Bot stopped")
 
 if __name__ == "__main__":
     asyncio.run(main())
