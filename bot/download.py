@@ -1,5 +1,5 @@
 """
-Download functionality - Original Working Version (Before Speed Optimization)
+Download functionality - Original Working Version (Markdown Safe)
 """
 import aiohttp
 import asyncio
@@ -83,14 +83,14 @@ class TeraboxDownloader:
             return {'success': False, 'error': str(e)}
     
     async def download_file(self, download_url: str, filename: str, status_msg):
-        """Original working download method - Simple and Reliable"""
+        """Original working download method - Markdown Safe"""
         try:
             filename = self._sanitize_filename(filename)
             file_path = os.path.join(config.DOWNLOAD_DIR, filename)
             os.makedirs(config.DOWNLOAD_DIR, exist_ok=True)
             
-            # Simple progress message
-            await status_msg.edit_text("📥 **Downloading...**", parse_mode='Markdown')
+            # Simple progress message - NO MARKDOWN
+            await status_msg.edit_text("📥 Downloading...", parse_mode=None)
             
             session = await self.get_session()
             
@@ -109,7 +109,7 @@ class TeraboxDownloader:
                             await file.write(chunk)
                             downloaded += len(chunk)
                             
-                            # Original progress update interval
+                            # Original progress update interval - NO MARKDOWN
                             if downloaded - last_update >= 1048576 or downloaded >= total_size:  # Every 1MB
                                 last_update = downloaded
                                 current_time = asyncio.get_event_loop().time()
@@ -122,10 +122,10 @@ class TeraboxDownloader:
                                     
                                     try:
                                         await status_msg.edit_text(
-                                            f"📥 **Downloading...**\n\n"
-                                            f"📊 **Progress:** {progress:.1f}%\n"
-                                            f"⚡ **Speed:** {speed_mb:.2f} MB/s",
-                                            parse_mode='Markdown'
+                                            f"📥 Downloading...\n\n"
+                                            f"📊 Progress: {progress:.1f}%\n"
+                                            f"⚡ Speed: {speed_mb:.2f} MB/s",
+                                            parse_mode=None  # NO MARKDOWN PARSING
                                         )
                                     except:
                                         pass
@@ -168,4 +168,4 @@ class TeraboxDownloader:
         """Close session"""
         if self.session:
             await self.session.close()
-                                
+                            
