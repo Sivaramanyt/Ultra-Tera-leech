@@ -1,5 +1,5 @@
 """
-Download functionality - Debug Enhanced Version
+Download functionality - Redirect Fixed Version
 """
 import aiohttp
 import asyncio
@@ -165,7 +165,7 @@ class TeraboxDownloader:
             return {'success': False, 'error': f'{api_type} API error: {str(e)}'}
     
     async def download_file(self, download_url: str, filename: str, status_msg):
-        """High-speed download with detailed error handling"""
+        """High-speed download with redirect handling"""
         try:
             filename = self._sanitize_filename(filename)
             file_path = os.path.join(config.DOWNLOAD_DIR, filename)
@@ -176,30 +176,10 @@ class TeraboxDownloader:
             
             session = await self.get_session()
             
-            # Test the download URL first
-            try:
-                async with session.head(download_url) as head_response:
-                    logger.info(f"🔍 HEAD request status: {head_response.status}")
-                    logger.info(f"📊 Content-Length: {head_response.headers.get('content-length', 'Unknown')}")
-                    logger.info(f"📄 Content-Type: {head_response.headers.get('content-type', 'Unknown')}")
-                    
-                    if head_response.status not in [200, 206]:
-                        logger.error(f"❌ HEAD request failed with status {head_response.status}")
-                        await status_msg.edit_text(
-                            f"❌ **Download URL Invalid**\n\n"
-                            f"Server returned status: {head_response.status}\n"
-                            f"The download link may have expired.\n\n"
-                            f"Please try again with a fresh link!",
-                            parse_mode='Markdown'
-                        )
-                        return None
-            except Exception as head_error:
-                logger.warning(f"⚠️ HEAD request failed: {head_error}")
-                # Continue with GET request anyway
-            
-            # Proceed with actual download
-            async with session.get(download_url) as response:
-                logger.info(f"📥 GET request status: {response.status}")
+            # Follow redirects to get the final download URL
+            async with session.get(download_url, allow_redirects=True) as response:
+                logger.info(f"📥 Final response status: {response.status}")
+                logger.info(f"🔗 Final URL: {str(response.url)[:100]}...")
                 
                 if response.status == 200:
                     total_size = int(response.headers.get('content-length', 0))
@@ -350,4 +330,4 @@ class TeraboxDownloader:
         """Close session"""
         if self.session:
             await self.session.close()
-        
+                        
