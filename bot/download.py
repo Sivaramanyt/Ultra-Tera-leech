@@ -1,44 +1,34 @@
 """
-Download functionality - Bulletproof Raw Stream Version
+Download functionality - Sync Requests in Thread (Like Working Bots)
 """
 import aiohttp
 import asyncio
 import aiofiles
 import os
+import requests
+from concurrent.futures import ThreadPoolExecutor
 from loguru import logger
 import config
 
 class TeraboxDownloader:
     def __init__(self):
         self.session = None
+        self.executor = ThreadPoolExecutor(max_workers=2)
     
     async def get_session(self):
-        """Bulletproof session"""
+        """Session for API only"""
         if not self.session or self.session.closed:
-            # Minimal connector
-            connector = aiohttp.TCPConnector(
-                limit=50,
-                limit_per_host=10
-            )
-            
-            # No timeouts to prevent drops
-            timeout = aiohttp.ClientTimeout(
-                total=None,
-                connect=60,
-                sock_read=None
-            )
-            
+            connector = aiohttp.TCPConnector()
+            timeout = aiohttp.ClientTimeout(total=300)
             self.session = aiohttp.ClientSession(
                 connector=connector,
                 timeout=timeout,
-                headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
             )
         return self.session
     
     async def get_download_info(self, url: str, status_msg):
-        """WDZone API"""
+        """WDZone API with aiohttp"""
         try:
             session = await self.get_session()
             api_url = 'https://wdzone-terabox-api.vercel.app/api'
@@ -86,74 +76,85 @@ class TeraboxDownloader:
             logger.error(f"API Error: {e}")
             return {'success': False, 'error': str(e)}
     
+    def _download_sync(self, download_url: str, file_path: str, status_callback):
+        """Synchronous download with requests (like working bots)"""
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            
+            # Use requests (sync) - this is what working bots use
+            response = requests.get(download_url, headers=headers, stream=True, timeout=(30, None))
+            
+            if response.status_code == 200:
+                total_size = int(response.headers.get('content-length', 0))
+                downloaded = 0
+                
+                with open(file_path, 'wb') as file:
+                    for chunk in response.iter_content(chunk_size=1024*1024):  # 1MB chunks
+                        if chunk:
+                            file.write(chunk)
+                            downloaded += len(chunk)
+                            
+                            # Progress callback every 2MB
+                            if downloaded % (2*1024*1024) == 0 or downloaded >= total_size:
+                                if status_callback:
+                                    progress = (downloaded / total_size) * 100 if total_size > 0 else 0
+                                    status_callback(downloaded, total_size, progress)
+                
+                logger.info(f"✅ Sync download completed: {downloaded} bytes")
+                return True
+            else:
+                logger.error(f"HTTP {response.status_code}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Sync download error: {e}")
+            return False
+    
     async def download_file(self, download_url: str, filename: str, status_msg):
-        """Bulletproof raw stream download"""
+        """Download using sync requests in thread"""
         try:
             filename = self._sanitize_filename(filename)
             file_path = os.path.join(config.DOWNLOAD_DIR, filename)
             os.makedirs(config.DOWNLOAD_DIR, exist_ok=True)
             
-            await status_msg.edit_text("📥 Downloading...", parse_mode=None)
+            await status_msg.edit_text("📥 Starting sync download...", parse_mode=None)
             
-            session = await self.get_session()
+            # Progress update function
+            last_update = [0]  # Use list for mutable reference
             
-            async with session.get(download_url) as response:
-                logger.info(f"Download response status: {response.status}")
-                
-                if response.status == 200:
-                    total_size = int(response.headers.get('content-length', 0))
-                    downloaded = 0
-                    
-                    async with aiofiles.open(file_path, 'wb') as file:
-                        # Raw byte reading instead of chunked
-                        buffer_size = 65536  # 64KB buffer
-                        
-                        while True:
-                            try:
-                                # Read raw bytes directly
-                                chunk = await response.content.read(buffer_size)
-                                if not chunk:
-                                    break
-                                
-                                await file.write(chunk)
-                                downloaded += len(chunk)
-                                
-                                # Progress every 1MB
-                                if downloaded % (1024*1024) == 0 or downloaded >= total_size:
-                                    if total_size > 0:
-                                        progress = (downloaded / total_size) * 100
-                                        try:
-                                            await status_msg.edit_text(
-                                                f"📥 Downloading\n\n"
-                                                f"Progress: {progress:.1f}%\n"
-                                                f"Downloaded: {self._format_bytes(downloaded)}\n"
-                                                f"Total: {self._format_bytes(total_size)}\n"
-                                                f"Method: Raw stream",
-                                                parse_mode=None
-                                            )
-                                        except:
-                                            pass
-                            
-                            except asyncio.IncompleteReadError:
-                                # Handle incomplete reads gracefully
-                                logger.warning("Incomplete read, continuing...")
-                                break
-                            except Exception as e:
-                                logger.error(f"Read error: {e}")
-                                break
-                    
-                    # Verify
-                    if os.path.exists(file_path):
-                        final_size = os.path.getsize(file_path)
-                        logger.info(f"✅ Download completed: {final_size} bytes")
-                        
-                        # Accept if we got at least 90% of the file
-                        if total_size == 0 or final_size >= total_size * 0.9:
-                            return file_path
-                        else:
-                            logger.warning(f"File incomplete: {final_size}/{total_size}")
-                    
-                return None
+            def progress_callback(downloaded, total_size, progress):
+                # Only update every 2MB to avoid spam
+                if downloaded - last_update[0] >= 2*1024*1024:
+                    last_update[0] = downloaded
+                    # Schedule update on event loop
+                    asyncio.create_task(status_msg.edit_text(
+                        f"📥 Sync Download\n\n"
+                        f"Progress: {progress:.1f}%\n"
+                        f"Downloaded: {self._format_bytes(downloaded)}\n"
+                        f"Total: {self._format_bytes(total_size)}\n"
+                        f"Method: Requests (sync)",
+                        parse_mode=None
+                    ))
+            
+            # Run sync download in thread
+            loop = asyncio.get_event_loop()
+            success = await loop.run_in_executor(
+                self.executor,
+                self._download_sync,
+                download_url,
+                file_path,
+                progress_callback
+            )
+            
+            if success and os.path.exists(file_path):
+                final_size = os.path.getsize(file_path)
+                if final_size > 0:
+                    logger.info(f"✅ Download successful: {final_size} bytes")
+                    return file_path
+            
+            return None
             
         except Exception as e:
             logger.error(f"Download error: {e}")
@@ -182,7 +183,8 @@ class TeraboxDownloader:
             pass
     
     async def close(self):
-        """Close session"""
+        """Close session and executor"""
         if self.session:
             await self.session.close()
-                    
+        self.executor.shutdown(wait=False)
+    
