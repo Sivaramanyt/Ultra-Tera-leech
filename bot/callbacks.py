@@ -1,5 +1,5 @@
 """
-Callback handlers for inline buttons
+Callback handlers for inline buttons - Private Channel Support
 """
 from loguru import logger
 from telegram import Update
@@ -18,7 +18,6 @@ class CallbackHandlers:
         
         if query.data == "check_subscription":
             # Re-check subscription
-            # Create a mock update object for the subscription check
             mock_update = type('MockUpdate', (), {
                 'effective_user': update.effective_user,
                 'message': query.message
@@ -34,14 +33,14 @@ class CallbackHandlers:
                 )
             # If not subscribed, the check function will send the force sub message again
         
-        elif query.data.startswith("no_link_"):
-            # Handle channels without accessible links
+        elif query.data.startswith("no_access_"):
+            # Handle private channels without accessible invite links
             await query.answer(
-                "Please contact admin to get access to this channel.",
+                "This is a private channel. Please contact the admin to get access.",
                 show_alert=True
             )
         
         else:
             # Handle unknown callback data
             await query.answer("Unknown action", show_alert=True)
-                
+            
