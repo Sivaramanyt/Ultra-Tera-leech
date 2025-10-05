@@ -1,5 +1,5 @@
 """
-Download functionality - Single Optimized Version
+Download functionality - Stable Working Version (WDZone API + single-stream)
 """
 import aiohttp
 import asyncio
@@ -11,258 +11,197 @@ import config
 class TeraboxDownloader:
     def __init__(self):
         self.session = None
-    
+
     async def get_session(self):
-        """Get optimized HTTP session"""
+        """Create one shared HTTP session for API calls"""
         if not self.session or self.session.closed:
             connector = aiohttp.TCPConnector(
-                limit=100,
-                limit_per_host=10,
+                limit=50,
+                limit_per_host=5,
                 ttl_dns_cache=300,
                 use_dns_cache=True,
-                keepalive_timeout=90,
+                keepalive_timeout=60,
                 enable_cleanup_closed=True
             )
-            
-            timeout = aiohttp.ClientTimeout(total=900)
-            
+            timeout = aiohttp.ClientTimeout(total=300)  # 5 minutes for API
             self.session = aiohttp.ClientSession(
                 connector=connector,
                 timeout=timeout,
                 headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                 }
             )
-        
         return self.session
-    
+
     async def get_download_info(self, url: str, status_msg):
-        """Get download URL and file info from API"""
+        """Use WDZone API to extract direct download URL"""
         try:
-            api_endpoints = [
-                {
-                    'url': 'https://wdzone-terabox-api.vercel.app/api',
-                    'type': 'wdzone'
-                }
-            ]
-            
-            for i, api_config in enumerate(api_endpoints):
-                try:
-                    await status_msg.edit_text(
-                        f"📡 **Getting download info...**\n\n"
-                        f"⚡ Please wait...",
-                        parse_mode='Markdown'
-                    )
-                    
-                    result = await self._try_api_request(api_config, url)
-                    
-                    if result['success']:
-                        return result
-                        
-                except Exception as e:
-                    continue
-            
-            return {'success': False, 'error': 'API failed'}
-            
-        except Exception as e:
-            return {'success': False, 'error': f'System error: {str(e)}'}
-    
-    async def _try_api_request(self, api_config: dict, terabox_url: str):
-        """Try API request"""
-        try:
+            await status_msg.edit_text(
+                "📡 Getting download info...\n\n🔄 Server 1/1\n⚡ Please wait...",
+                parse_mode="Markdown"
+            )
+
+            api = "https://wdzone-terabox-api.vercel.app/api"
             session = await self.get_session()
-            api_url = api_config['url']
-            
-            params = {'url': terabox_url}
-            
-            async with session.get(api_url, params=params) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    
-                    # Find status and info fields
-                    status_field = None
-                    info_field = None
-                    
-                    for key in result.keys():
-                        if 'status' in key.lower():
-                            status_field = key
-                        if 'info' in key.lower():
-                            info_field = key
-                    
-                    if status_field and result.get(status_field) == 'Success':
-                        if info_field and result.get(info_field):
-                            extracted_info = result.get(info_field)
-                            
-                            if isinstance(extracted_info, list) and len(extracted_info) > 0:
-                                info = extracted_info[0]
-                                
-                                download_url = None
-                                title = 'download'
-                                size = 'Unknown'
-                                
-                                for key in info.keys():
-                                    value = info.get(key)
-                                    if isinstance(value, str):
-                                        if 'download' in key.lower() and ('http' in value or 'https' in value):
-                                            download_url = value
-                                        
-                                        if 'title' in key.lower() or 'name' in key.lower():
-                                            title = value
-                                        
-                                        if 'size' in key.lower():
-                                            size = value
-                                
-                                if download_url:
-                                    return {
-                                        'success': True,
-                                        'download_url': download_url,
-                                        'filename': title,
-                                        'size': size
-                                    }
-            
-            return {'success': False, 'error': 'No download URL'}
-            
+            async with session.get(api, params={"url": url}) as res:
+                if res.status != 200:
+                    return {"success": False, "error": f"API HTTP {res.status}"}
+                data = await res.json()
+
+            # WDZone keys have emojis; find them by name fragments
+            status_key = next((k for k in data.keys() if "status" in k.lower()), None)
+            info_key = next((k for k in data.keys() if "info" in k.lower()), None)
+            if not status_key or data.get(status_key) != "Success" or not info_key:
+                return {"success": False, "error": "API returned no success"}
+
+            items = data.get(info_key) or []
+            if not isinstance(items, list) or not items:
+                return {"success": False, "error": "No items"}
+
+            info = items[0]
+            # Map fields with emoji names
+            title = next((info[k] for k in info if "title" in k.lower() or "name" in k.lower()), "download")
+            size = next((info[k] for k in info if "size" in k.lower()), "Unknown")
+            download_url = next(
+                (info[k] for k in info if "download" in k.lower() and isinstance(info[k], str) and info[k].startswith(("http://", "https://"))),
+                None
+            )
+            if not download_url:
+                return {"success": False, "error": "No download URL found"}
+
+            logger.info(f"✅ Got download info: {title} ({size})")
+            return {"success": True, "download_url": download_url, "filename": title, "size": size}
+
         except Exception as e:
-            return {'success': False, 'error': f'API error: {str(e)}'}
-    
+            return {"success": False, "error": f"System error: {e}"}
+
     async def download_file(self, download_url: str, filename: str, status_msg):
-        """Single optimized download"""
+        """
+        Stable single-stream downloader:
+        - follows redirects
+        - large chunks
+        - moderate progress updates
+        """
         try:
             filename = self._sanitize_filename(filename)
-            file_path = os.path.join(config.DOWNLOAD_DIR, filename)
+            path = os.path.join(config.DOWNLOAD_DIR, filename)
             os.makedirs(config.DOWNLOAD_DIR, exist_ok=True)
-            
-            # Clean start
-            if os.path.exists(file_path):
-                os.remove(file_path)
-            
-            await status_msg.edit_text(
-                f"🚀 **Starting Download**\n\n"
-                f"📁 **File:** {filename[:30]}...\n"
-                f"⏳ Connecting...",
-                parse_mode='Markdown'
-            )
-            
-            # Create optimized session
+
+            # Remove any previous partial file for clean behavior (old working flow)
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+
+            # Dedicated session for file transfer with generous timeouts
             connector = aiohttp.TCPConnector(
                 limit=1,
                 limit_per_host=1,
-                keepalive_timeout=300,
+                keepalive_timeout=180,
                 enable_cleanup_closed=True
             )
-            
             timeout = aiohttp.ClientTimeout(
-                total=1800,   # 30 minutes
-                connect=60,   # 1 minute
-                sock_read=300 # 5 minutes
+                total=1800,    # 30 min overall
+                connect=30,    # connect fast
+                sock_read=180  # 3 min between chunks
             )
-            
             async with aiohttp.ClientSession(
                 connector=connector,
                 timeout=timeout,
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            ) as session:
-                
-                async with session.get(download_url, allow_redirects=True) as response:
-                    if response.status == 200:
-                        total_size = int(response.headers.get('content-length', 0))
-                        downloaded = 0
-                        last_update = 0
-                        start_time = asyncio.get_event_loop().time()
-                        
-                        chunk_size = 256 * 1024  # 256KB
-                        
-                        async with aiofiles.open(file_path, 'wb') as file:
-                            async for chunk in response.content.iter_chunked(chunk_size):
-                                await file.write(chunk)
-                                downloaded += len(chunk)
-                                
-                                # Update every 2MB
-                                if downloaded - last_update >= 2*1024*1024 or downloaded >= total_size:
-                                    last_update = downloaded
-                                    elapsed = asyncio.get_event_loop().time() - start_time
-                                    
-                                    if total_size > 0 and elapsed > 0:
-                                        progress = (downloaded / total_size) * 100
-                                        speed = downloaded / elapsed
-                                        speed_mb = speed / (1024 * 1024)
-                                        
-                                        try:
-                                            await status_msg.edit_text(
-                                                f"🚀 **Downloading**\n\n"
-                                                f"📊 **Progress:** {progress:.1f}%\n"
-                                                f"💾 **Downloaded:** {self._format_bytes(downloaded)}\n"
-                                                f"📦 **Total:** {self._format_bytes(total_size)}\n"
-                                                f"⚡ **Speed:** {speed_mb:.1f} MB/s",
-                                                parse_mode='Markdown'
-                                            )
-                                        except:
-                                            pass
-                        
-                        # Verify
-                        final_size = os.path.getsize(file_path)
-                        if total_size > 0 and final_size >= total_size * 0.95:
-                            return file_path
-                        else:
-                            await status_msg.edit_text(
-                                "❌ **Download Incomplete**\n\n"
-                                "Please try again!",
-                                parse_mode='Markdown'
-                            )
-                            return None
-                    else:
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            ) as file_sess:
+
+                async with file_sess.get(download_url, allow_redirects=True) as resp:
+                    if resp.status != 200:
                         await status_msg.edit_text(
-                            f"❌ **Server Error**\n\n"
-                            f"HTTP {response.status}\n\n"
-                            "Please try again!",
-                            parse_mode='Markdown'
+                            f"❌ Download failed\n\nHTTP {resp.status}\nPlease try again later!",
+                            parse_mode="Markdown"
                         )
                         return None
-                        
+
+                    total = int(resp.headers.get("content-length", 0))
+                    downloaded = 0
+                    last_update = 0
+                    start = asyncio.get_event_loop().time()
+
+                    chunk = 256 * 1024  # 256KB as in your working logs
+                    async with aiofiles.open(path, "wb") as f:
+                        async for part in resp.content.iter_chunked(chunk):
+                            await f.write(part)
+                            downloaded += len(part)
+
+                            # update every 2 MB or on completion
+                            if downloaded - last_update >= 2 * 1024 * 1024 or (total and downloaded >= total):
+                                last_update = downloaded
+                                if total:
+                                    elapsed = max(0.001, asyncio.get_event_loop().time() - start)
+                                    speed = downloaded / elapsed / (1024 * 1024)
+                                    prog = downloaded / total * 100
+                                    try:
+                                        await status_msg.edit_text(
+                                            f"📥 Downloading...\n\n"
+                                            f"📊 Progress: {prog:.1f}%\n"
+                                            f"💾 {self._fmt(downloaded)} / {self._fmt(total)}\n"
+                                            f"⚡ {speed:.1f} MB/s",
+                                            parse_mode="Markdown"
+                                        )
+                                    except Exception:
+                                        pass
+
+            # Verify size if available
+            if total and os.path.getsize(path) < total * 0.95:
+                await status_msg.edit_text(
+                    "❌ File download failed\n\nPlease try again later!",
+                    parse_mode="Markdown"
+                )
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+                return None
+
+            logger.info(f"✅ Download completed: {path}")
+            return path
+
         except asyncio.TimeoutError:
             await status_msg.edit_text(
-                "❌ **Download Timeout**\n\n"
-                "Connection timed out.\n\n"
-                "Please try again!",
-                parse_mode='Markdown'
+                "❌ Download timeout\n\nPlease try again later!",
+                parse_mode="Markdown"
             )
             return None
-            
         except Exception as e:
+            logger.error(f"Download error: {e}")
             await status_msg.edit_text(
-                "❌ **Download Failed**\n\n"
-                "Please try again!",
-                parse_mode='Markdown'
+                "❌ File download failed\n\nPlease try again later!",
+                parse_mode="Markdown"
             )
             return None
-    
+
     def _sanitize_filename(self, filename: str) -> str:
-        """Clean filename"""
         import re
-        filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+        filename = re.sub(r'[<>:"/\\|?*]', "_", filename)
         if len(filename) > 200:
-            name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
-            filename = name[:200-len(ext)-1] + '.' + ext if ext else name[:200]
+            name, ext = filename.rsplit(".", 1) if "." in filename else (filename, "")
+            filename = name[:200 - len(ext) - 1] + ("." + ext if ext else "")
         return filename
-    
-    def _format_bytes(self, bytes_count: int) -> str:
-        """Format bytes"""
-        for unit in ['B', 'KB', 'MB', 'GB']:
-            if bytes_count < 1024.0:
-                return f"{bytes_count:.1f} {unit}"
-            bytes_count /= 1024.0
-        return f"{bytes_count:.1f} TB"
-    
+
+    def _fmt(self, n: int) -> str:
+        """Human readable bytes"""
+        for unit in ("B", "KB", "MB", "GB"):
+            if n < 1024:
+                return f"{n:.1f} {unit}"
+            n /= 1024.0
+        return f"{n:.1f} TB"
+
     async def cleanup_file(self, file_path: str):
-        """Clean up file"""
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
-        except Exception as e:
+        except Exception:
             pass
-    
+
     async def close(self):
-        """Close session"""
         if self.session:
             await self.session.close()
-                            
+            
