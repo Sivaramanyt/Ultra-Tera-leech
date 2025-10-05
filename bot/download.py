@@ -1,5 +1,5 @@
 """
-Download functionality - Connection-Resilient Version
+Download functionality - Connection-Resilient Version (Fixed)
 """
 import aiohttp
 import asyncio
@@ -17,19 +17,18 @@ class TeraboxDownloader:
         if not self.session or self.session.closed:
             connector = aiohttp.TCPConnector(
                 limit=50,
-                limit_per_host=5,
+                limit_per_host=3,    # Fixed: Only one limit_per_host
                 ttl_dns_cache=300,
                 use_dns_cache=True,
                 keepalive_timeout=60,
                 enable_cleanup_closed=True,
-                force_close=True,  # Force close connections
-                limit_per_host=2   # Reduce concurrent connections
+                force_close=True
             )
             
             timeout = aiohttp.ClientTimeout(
                 total=1800,      # 30 minutes
                 connect=30,      # 30 seconds to connect
-                sock_read=120,   # 2 minutes for reading (reduced)
+                sock_read=120,   # 2 minutes for reading
                 sock_connect=30  # 30 seconds socket connect
             )
             
@@ -243,8 +242,12 @@ class TeraboxDownloader:
                                             pass
                         
                         except asyncio.IncompleteReadError:
-                            logger.warning("Incomplete read - partial download saved")
-                            return downloaded >= total_size * 0.95  # 95% complete is acceptable
+                            logger.warning("Incomplete read - checking if download is complete")
+                            # Check if we got most of the file (95% or more)
+                            if total_size > 0 and downloaded >= total_size * 0.95:
+                                logger.info(f"Download 95%+ complete ({downloaded}/{total_size})")
+                                return True
+                            return False
                     
                     return True
                 else:
@@ -285,4 +288,4 @@ class TeraboxDownloader:
         """Close session"""
         if self.session:
             await self.session.close()
-        
+                        
