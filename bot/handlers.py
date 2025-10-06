@@ -216,7 +216,7 @@ class BotHandlers:
             download_manager.remove_download(user_id)
     
     async def _download_process(self, update: Update, text: str, status_msg, user_id: int):
-        """The actual download process - FIXED"""
+        """The actual download process - COMPLETELY FIXED"""
         try:
             # Step 1: Get download info
             download_info = await self.downloader.get_download_info(text, status_msg)
@@ -230,24 +230,40 @@ class BotHandlers:
                 )
                 return
             
-            if not download_info['success']:
+            if not download_info.get('success', False):
+                error_msg = download_info.get('error', 'Unknown error')
                 await status_msg.edit_text(
                     f"❌ Failed to get download info\n\n"
-                    f"Reason: {download_info['error']}",
+                    f"Reason: {error_msg}",
                     parse_mode=None
                 )
                 return
             
-            # FIXED: Extract variables from download_info properly
+            # CRITICAL FIX: Safely extract all variables with proper fallbacks
             filename = download_info.get('filename', 'unknown_file')
-            download_url = download_info.get('download_url')  # ← CRITICAL FIX
             file_size = download_info.get('size', 'Unknown')
             
-            # FIXED: Validate download_url exists
+            # CRITICAL FIX: Handle multiple possible key names for download URL
+            download_url = None
+            possible_url_keys = [
+                'download_url', 
+                'Direct Download Link',
+                '🔗 Direct Download Link',
+                'url',
+                'link'
+            ]
+            
+            for key in possible_url_keys:
+                if key in download_info:
+                    download_url = download_info[key]
+                    break
+            
+            # CRITICAL FIX: Validate download_url exists
             if not download_url:
-                logger.error("❌ No download URL found in API response")
+                logger.error(f"❌ No download URL found. Available keys: {list(download_info.keys())}")
                 await status_msg.edit_text(
                     "❌ Failed to extract download URL\n\n"
+                    "API response doesn't contain download link.\n"
                     "Please try again or contact support.",
                     parse_mode=None
                 )
@@ -270,9 +286,9 @@ class BotHandlers:
                 parse_mode=None
             )
             
-            # FIXED: Now download_url is properly defined
+            # CRITICAL FIX: Now download_url is guaranteed to be defined
             file_path = await self.downloader.download_file(
-                download_url,  # ← Now properly defined
+                download_url,  # ← Now properly extracted and validated
                 filename,
                 status_msg
             )
@@ -363,5 +379,5 @@ class BotHandlers:
             "I'll download it and upload as the right media type! 🚀\n\n"
             "💡 Use /cancel to stop ongoing downloads",
             parse_mode=None
-        )
+            )
         
