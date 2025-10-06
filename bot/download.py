@@ -1,5 +1,5 @@
 """
-Complete Download Module - Fully Handler Compatible
+Complete Download Module - Fully Perfect and Handler Compatible
 """
 import os
 import asyncio
@@ -259,7 +259,7 @@ async def download_file(download_url: str, filename: str, status_msg):
 
 # TeraboxDownloader class for backward compatibility
 class TeraboxDownloader:
-    """Compatibility class for existing handlers"""
+    """Compatibility class for existing handlers - FULLY COMPLETE"""
     
     def __init__(self):
         pass
@@ -281,9 +281,20 @@ class TeraboxDownloader:
         return await download_file(download_url, filename, status_msg)
     
     async def download_file(self, download_url: str, filename: str, status_msg, *args, **kwargs):
-        """Download file method for handler compatibility - ADDED THIS METHOD"""
+        """Download file method for handler compatibility"""
         return await download_file(download_url, filename, status_msg)
+    
+    def cleanup_file(self, file_path: str):
+        """Clean up downloaded file - FINAL MISSING METHOD"""
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logger.info(f"🧹 Cleaned up file: {file_path}")
+            else:
+                logger.warning(f"⚠️ File not found for cleanup: {file_path}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not cleanup file {file_path}: {e}")
 
 # Create global instance for backward compatibility
 downloader = TeraboxDownloader()
-                            
+                                
