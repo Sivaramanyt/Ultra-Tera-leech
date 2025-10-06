@@ -420,6 +420,10 @@ class TeraboxDownloader:
     async def get_download_info(self, terabox_url: str, status_msg=None, *args, **kwargs):
         """Get download info - flexible parameter handling"""
         return await download_file(download_url, filename, status_msg)
+
+    async def download_with_resume(self, download_url: str, filename: str, status_msg, *args, **kwargs):
+        """Download with resume - flexible parameter handling"""
+        return await download_file(download_url, filename, status_msg)
     
     async def download_file(self, download_url: str, filename: str, status_msg, *args, **kwargs):
         """Download file method - FIXED compatibility"""
