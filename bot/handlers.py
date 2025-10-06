@@ -1,7 +1,5 @@
 """
-
 Bot handlers - Simple Working Version (No External Dependencies)
-
 """
 
 import asyncio
@@ -248,7 +246,7 @@ class BotHandlers:
             filename = download_info.get('filename', 'unknown_file')
             file_size = download_info.get('size', 'Unknown')
             
-            # CRITICAL FIX: Find download URL with multiple possible keys - FIXED INDENTATION
+            # CRITICAL FIX: Find download URL with multiple possible keys
             download_url = None
             url_keys_to_try = [
                 'download_url',
@@ -390,5 +388,5 @@ class BotHandlers:
             "I'll download it and upload as the right media type! 🚀\n\n"
             "💡 Use /cancel to stop ongoing downloads",
             parse_mode=None
-        )
-        
+    )
+                             
