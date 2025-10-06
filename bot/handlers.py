@@ -1,3 +1,4 @@
+# FORCE UPDATE - Version 3.0 - FINAL FIX
 """
 Bot handlers - Simple Working Version (No External Dependencies)
 """
@@ -214,120 +215,105 @@ class BotHandlers:
             download_manager.remove_download(user_id)
     
     async def _download_process(self, update: Update, text: str, status_msg, user_id: int):
-        """The actual download process - COMPLETELY FIXED"""
+        """BULLETPROOF download process - FINAL VERSION"""
+        download_url = None  # Initialize at the start
         try:
             # Step 1: Get download info
             download_info = await self.downloader.get_download_info(text, status_msg)
             
-            # Debug: Log the actual API response structure
-            logger.info(f"🔍 API Response Keys: {list(download_info.keys())}")
-            logger.info(f"🔍 API Response Content: {str(download_info)[:200]}...")
+            # Log everything for debugging
+            logger.info(f"🔍 API Response: {download_info}")
             
             # Check if cancelled
             if download_manager.is_cancelled(user_id):
-                await status_msg.edit_text(
-                    "❌ Download Cancelled\n\n"
-                    "The download has been cancelled by user.",
-                    parse_mode=None
-                )
+                await status_msg.edit_text("❌ Download Cancelled", parse_mode=None)
                 return
             
-            # FIXED: Check success properly
-            if not download_info.get('success', False):
-                error_msg = download_info.get('error', 'Unknown error')
-                await status_msg.edit_text(
-                    f"❌ Failed to get download info\n\n"
-                    f"Reason: {error_msg}",
-                    parse_mode=None
-                )
+            # Check if API call succeeded
+            if not download_info or not download_info.get('success', False):
+                error_msg = download_info.get('error', 'API call failed') if download_info else 'No response from API'
+                await status_msg.edit_text(f"❌ API Error: {error_msg}", parse_mode=None)
                 return
             
-            # CRITICAL FIX: Extract variables safely
-            filename = download_info.get('filename', 'unknown_file')
-            file_size = download_info.get('size', 'Unknown')
+            # Extract basic info
+            filename = download_info.get('filename', 'unknown_file.bin')
+            file_size = download_info.get('size', 'Unknown size')
             
-            # CRITICAL FIX: Find download URL with multiple possible keys
+            # BULLETPROOF URL extraction - try every possible way
             download_url = None
-            url_keys_to_try = [
-                'download_url',
-                'Direct Download Link',
-                '🔗 Direct Download Link',
-                'url',
-                'link',
-                'file_url',
-                'download_link'
-            ]
             
-            for key in url_keys_to_try:
+            # Method 1: Try direct keys
+            for key in ['download_url', 'Direct Download Link', '🔗 Direct Download Link', 'url', 'link']:
                 if key in download_info and download_info[key]:
                     download_url = download_info[key]
-                    logger.info(f"✅ Found download URL with key: '{key}'")
+                    logger.info(f"✅ Found URL with key: {key}")
                     break
             
-            # CRITICAL FIX: If still not found, log all keys and exit gracefully
+            # Method 2: Search all keys for URLs
+            if not download_url:
+                for key, value in download_info.items():
+                    if value and isinstance(value, str) and ('http' in value.lower() or 'download' in key.lower()):
+                        download_url = value
+                        logger.info(f"✅ Found URL by search: {key}")
+                        break
+            
+            # Method 3: Last resort - any string with http
+            if not download_url:
+                for key, value in download_info.items():
+                    if isinstance(value, str) and 'http' in value:
+                        download_url = value
+                        logger.info(f"✅ Found URL (last resort): {key}")
+                        break
+            
+            # If still no URL found
             if not download_url:
                 all_keys = list(download_info.keys())
-                logger.error(f"❌ Download URL not found. Available keys: {all_keys}")
+                logger.error(f"❌ No download URL found in: {all_keys}")
                 await status_msg.edit_text(
-                    f"❌ Failed to extract download URL\n\n"
-                    f"API response doesn't contain download link.\n"
+                    f"❌ No download URL found\n\n"
                     f"Available keys: {all_keys}\n\n"
-                    "Please try again or contact support.",
+                    "API might have changed format.",
                     parse_mode=None
                 )
                 return
             
-            # Now download_url is guaranteed to exist
-            logger.info(f"✅ Using download URL: {download_url[:100]}...")
+            # Now we definitely have a download_url
+            logger.info(f"✅ Final download URL: {download_url[:100]}...")
             
-            # Step 2: Detect media type
+            # Detect media type
             file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
             media_type, media_emoji = self._detect_media_type(file_ext)
             
-            # Step 3: Download file
+            # Update status
             await status_msg.edit_text(
                 f"📥 Downloading File...\n\n"
                 f"📁 File: {filename[:40]}...\n"
                 f"💾 Size: {file_size}\n"
                 f"📱 Type: {media_emoji} {media_type}\n"
-                f"⏳ Please wait...\n\n"
-                f"💡 Use /cancel to stop",
+                f"⏳ Please wait...",
                 parse_mode=None
             )
             
-            # CRITICAL FIX: Now download_url is guaranteed to be defined
-            file_path = await self.downloader.download_file(
-                download_url,  # ← NOW PROPERLY DEFINED AND VALIDATED
-                filename,
-                status_msg
-            )
+            # Download the file
+            file_path = await self.downloader.download_file(download_url, filename, status_msg)
             
             # Check if cancelled after download
             if download_manager.is_cancelled(user_id):
-                await status_msg.edit_text(
-                    "❌ Download Cancelled\n\n"
-                    "The download has been cancelled by user.",
-                    parse_mode=None
-                )
-                # Clean up file
+                await status_msg.edit_text("❌ Download Cancelled", parse_mode=None)
                 if file_path:
                     await self.downloader.cleanup_file(file_path)
                 return
             
             if not file_path:
-                await status_msg.edit_text(
-                    "❌ File download failed\n\n"
-                    "Please try again later!",
-                    parse_mode=None
-                )
+                await status_msg.edit_text("❌ Download failed", parse_mode=None)
                 return
             
-            # Step 4: Upload to Telegram
+            # Upload to Telegram
             await status_msg.edit_text(
                 f"📤 Uploading to Telegram...\n\n"
                 f"📁 File: {filename[:40]}...\n"
                 f"💾 Size: {file_size}\n"
-                f"📱 Uploading as: {media_emoji} {media_type}",
+                f"📱 Type: {media_emoji} {media_type}",
                 parse_mode=None
             )
             
@@ -350,13 +336,8 @@ class BotHandlers:
             await self.downloader.cleanup_file(file_path)
             
         except Exception as e:
-            logger.error(f"Download process error: {e}")
-            if not download_manager.is_cancelled(user_id):
-                await status_msg.edit_text(
-                    "❌ System Error\n\n"
-                    "Something went wrong. Please try again!",
-                    parse_mode=None
-                )
+            logger.error(f"❌ Download process error: {str(e)}")
+            await status_msg.edit_text(f"❌ System Error: {str(e)[:100]}", parse_mode=None)
     
     def _detect_media_type(self, file_ext: str):
         """Detect media type from file extension"""
@@ -388,5 +369,5 @@ class BotHandlers:
             "I'll download it and upload as the right media type! 🚀\n\n"
             "💡 Use /cancel to stop ongoing downloads",
             parse_mode=None
-    )
-                             
+        )
+        
