@@ -248,13 +248,13 @@ class BotHandlers:
             filename = download_info.get('filename', 'unknown_file')
             file_size = download_info.get('size', 'Unknown')
             
-            # CRITICAL FIX: Find download URL with multiple possible keys
+            # CRITICAL FIX: Find download URL with multiple possible keys - FIXED INDENTATION
             download_url = None
             url_keys_to_try = [
-                'download_url', 
-                'Direct Download Link', 
+                'download_url',
+                'Direct Download Link',
                 '🔗 Direct Download Link',
-                'url', 
+                'url',
                 'link',
                 'file_url',
                 'download_link'
@@ -390,5 +390,5 @@ class BotHandlers:
             "I'll download it and upload as the right media type! 🚀\n\n"
             "💡 Use /cancel to stop ongoing downloads",
             parse_mode=None
-    )
-                            
+        )
+        
