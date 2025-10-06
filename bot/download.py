@@ -218,8 +218,8 @@ async def download_parallel_chunks(download_url: str, file_path: str, total_size
         logger.error(f"❌ Parallel download failed: {e}")
         
     return None
- async def download_file(download_url: str, filename: str, status_msg):
-    """ULTRA-FAST Download - FIXED VERSION (Koyeb Compatible)"""
+async def download_file(download_url: str, filename: str, status_msg):
+    """ULTRA-FAST Download - FIXED INDENTATION VERSION"""
     filename = _sanitize_filename(filename)
     file_path = os.path.join(config.DOWNLOAD_DIR, filename)
     os.makedirs(config.DOWNLOAD_DIR, exist_ok=True)
@@ -255,25 +255,24 @@ async def download_parallel_chunks(download_url: str, file_path: str, total_size
     except Exception as e:
         logger.info(f"📝 Parallel not available: {str(e)[:100]}")
     
-    # Strategy 2: ULTRA-FAST SINGLE STREAM (FIXED)
+    # Strategy 2: ULTRA-FAST SINGLE STREAM
     try:
         await status_msg.edit_text("🚀 Ultra-fast downloading...", parse_mode=None)
         logger.info("🔄 Attempting ULTRA-FAST OPTIMIZED download")
         
-        # FIXED: Removed incompatible parameters
         connector = aiohttp.TCPConnector(
-            limit=100,                  # Total connection pool size
-            limit_per_host=20,          # Connections per host
-            ttl_dns_cache=300,          # DNS cache TTL
-            use_dns_cache=True,         # Enable DNS caching
-            keepalive_timeout=60,       # Keep-alive timeout
-            enable_cleanup_closed=True  # Clean up closed connections
+            limit=100,
+            limit_per_host=20,
+            ttl_dns_cache=300,
+            use_dns_cache=True,
+            keepalive_timeout=60,
+            enable_cleanup_closed=True
         )
         
         timeout = aiohttp.ClientTimeout(
-            total=300,                  # 5 minutes total
-            sock_read=30,               # 30 seconds read timeout
-            sock_connect=10             # 10 seconds connect timeout
+            total=300,
+            sock_read=30,
+            sock_connect=10
         )
         
         headers = {
@@ -284,11 +283,7 @@ async def download_parallel_chunks(download_url: str, file_path: str, total_size
             'Accept-Encoding': 'gzip, deflate, br'
         }
         
-        async with aiohttp.ClientSession(
-            timeout=timeout, 
-            headers=headers, 
-            connector=connector
-        ) as session:
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers, connector=connector) as session:
             async with session.get(download_url) as response:
                 logger.info(f"📡 Download Response Status: {response.status}")
                 
@@ -301,7 +296,7 @@ async def download_parallel_chunks(download_url: str, file_path: str, total_size
                     
                     async with aiofiles.open(file_path, 'wb') as file:
                         downloaded = 0
-                        chunk_size = 1024 * 1024 * 4  # 4MB chunks for max speed!
+                        chunk_size = 1024 * 1024 * 4  # 4MB chunks
                         start_time = asyncio.get_event_loop().time()
                         last_update = start_time
                         
@@ -309,7 +304,6 @@ async def download_parallel_chunks(download_url: str, file_path: str, total_size
                             await file.write(chunk)
                             downloaded += len(chunk)
                             
-                            # Update progress every 2 seconds
                             current_time = asyncio.get_event_loop().time()
                             if current_time - last_update >= 2:
                                 mb_downloaded = downloaded / (1024 * 1024)
@@ -332,7 +326,7 @@ async def download_parallel_chunks(download_url: str, file_path: str, total_size
     except Exception as e:
         logger.warning(f"Ultra-fast failed: {str(e)[:100]}")
     
-    # Strategy 3: SUPER-FAST DOWNLOAD (Enhanced fallback)
+    # Strategy 3: SUPER-FAST DOWNLOAD
     try:
         await status_msg.edit_text("⚡ Super-fast downloading...", parse_mode=None)
         logger.info("🔄 Attempting SUPER-FAST download")
@@ -350,11 +344,9 @@ async def download_parallel_chunks(download_url: str, file_path: str, total_size
                     async with aiofiles.open(file_path, 'wb') as file:
                         chunk_size = 1024 * 1024 * 2  # 2MB chunks
                         start_time = asyncio.get_event_loop().time()
-                        downloaded = 0
                         
                         async for chunk in response.content.iter_chunked(chunk_size):
                             await file.write(chunk)
-                            downloaded += len(chunk)
                     
                     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
                         final_size = os.path.getsize(file_path) / (1024 * 1024)
@@ -377,7 +369,7 @@ async def download_parallel_chunks(download_url: str, file_path: str, total_size
                 if response.status == 200:
                     async with aiofiles.open(file_path, 'wb') as file:
                         chunk_size = 1024 * 1024  # 1MB chunks
-                        async for chunk in response.content.iter_chunmed(chunk_size):
+                        async for chunk in response.content.iter_chunked(chunk_size):
                             await file.write(chunk)
                     
                     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
@@ -434,4 +426,4 @@ class TeraboxDownloader:
 
 # Create global instance for backward compatibility
 downloader = TeraboxDownloader()
-                            
+                        
