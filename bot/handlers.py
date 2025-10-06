@@ -221,6 +221,10 @@ class BotHandlers:
             # Step 1: Get download info
             download_info = await self.downloader.get_download_info(text, status_msg)
             
+            # Debug: Log the actual API response structure
+            logger.info(f"🔍 API Response Keys: {list(download_info.keys())}")
+            logger.info(f"🔍 API Response Content: {str(download_info)[:200]}...")
+            
             # Check if cancelled
             if download_manager.is_cancelled(user_id):
                 await status_msg.edit_text(
@@ -230,6 +234,7 @@ class BotHandlers:
                 )
                 return
             
+            # FIXED: Check success properly
             if not download_info.get('success', False):
                 error_msg = download_info.get('error', 'Unknown error')
                 await status_msg.edit_text(
@@ -239,37 +244,43 @@ class BotHandlers:
                 )
                 return
             
-            # CRITICAL FIX: Safely extract all variables with proper fallbacks
+            # CRITICAL FIX: Extract variables safely
             filename = download_info.get('filename', 'unknown_file')
             file_size = download_info.get('size', 'Unknown')
             
-            # CRITICAL FIX: Handle multiple possible key names for download URL
+            # CRITICAL FIX: Find download URL with multiple possible keys
             download_url = None
-            possible_url_keys = [
+            url_keys_to_try = [
                 'download_url', 
-                'Direct Download Link',
+                'Direct Download Link', 
                 '🔗 Direct Download Link',
-                'url',
-                'link'
+                'url', 
+                'link',
+                'file_url',
+                'download_link'
             ]
             
-            for key in possible_url_keys:
-                if key in download_info:
+            for key in url_keys_to_try:
+                if key in download_info and download_info[key]:
                     download_url = download_info[key]
+                    logger.info(f"✅ Found download URL with key: '{key}'")
                     break
             
-            # CRITICAL FIX: Validate download_url exists
+            # CRITICAL FIX: If still not found, log all keys and exit gracefully
             if not download_url:
-                logger.error(f"❌ No download URL found. Available keys: {list(download_info.keys())}")
+                all_keys = list(download_info.keys())
+                logger.error(f"❌ Download URL not found. Available keys: {all_keys}")
                 await status_msg.edit_text(
-                    "❌ Failed to extract download URL\n\n"
-                    "API response doesn't contain download link.\n"
+                    f"❌ Failed to extract download URL\n\n"
+                    f"API response doesn't contain download link.\n"
+                    f"Available keys: {all_keys}\n\n"
                     "Please try again or contact support.",
                     parse_mode=None
                 )
                 return
             
-            logger.info(f"✅ Download URL extracted: {download_url[:100]}...")
+            # Now download_url is guaranteed to exist
+            logger.info(f"✅ Using download URL: {download_url[:100]}...")
             
             # Step 2: Detect media type
             file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
@@ -288,7 +299,7 @@ class BotHandlers:
             
             # CRITICAL FIX: Now download_url is guaranteed to be defined
             file_path = await self.downloader.download_file(
-                download_url,  # ← Now properly extracted and validated
+                download_url,  # ← NOW PROPERLY DEFINED AND VALIDATED
                 filename,
                 status_msg
             )
@@ -379,5 +390,5 @@ class BotHandlers:
             "I'll download it and upload as the right media type! 🚀\n\n"
             "💡 Use /cancel to stop ongoing downloads",
             parse_mode=None
-            )
-        
+    )
+                            
