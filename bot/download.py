@@ -1,5 +1,5 @@
 """
-Complete Download Module - WDZone API Compatible
+Complete Download Module - Correct WDZone API Endpoint
 """
 import os
 import asyncio
@@ -10,11 +10,11 @@ from loguru import logger
 import config
 
 async def get_download_info(terabox_url: str):
-    """Get download information from WDZone API with correct response handling"""
+    """Get download information from WDZone API with correct endpoint"""
     
     # Properly encode the URL
-    encoded_url = urllib.parse.quote(terabox_url, safe=':/?#[]@!$&\'()*+,;=')
-    api_url = f"https://wdzone-terabox-api.vercel.app/file_info?url={encoded_url}"
+    encoded_url = urllib.parse.quote(terabox_url, safe='')
+    api_url = f"https://wdzone-terabox-api.vercel.app/api?url={encoded_url}"
     
     logger.info(f"🔄 API Request: {api_url[:100]}...")
     
@@ -34,68 +34,74 @@ async def get_download_info(terabox_url: str):
                     data = await response.json()
                     logger.info(f"📊 API Response Keys: {list(data.keys())}")
                     
-                    # Handle WDZone API format from your screenshot
-                    if data.get("Status") == "Success" and data.get("ExctractedInfo"):
-                        extracted_info = data["ExctractedInfo"]
+                    # Handle WDZone API format from your test
+                    status_key = None
+                    extracted_key = None
+                    
+                    # Find status key (with or without emoji)
+                    for key in data.keys():
+                        if "Status" in key or "status" in key:
+                            status_key = key
+                        if "Extracted" in key or "extracted" in key:
+                            extracted_key = key
+                    
+                    if status_key and data.get(status_key) == "Success" and extracted_key:
+                        extracted_info = data[extracted_key]
                         
                         if isinstance(extracted_info, list) and len(extracted_info) > 0:
-                            file_info = extracted_info[0]  # Get first file
+                            file_info = extracted_info[0]
                         else:
                             file_info = extracted_info
                         
-                        # Extract file details
-                        file_name = file_info.get("Title", "unknown_file")
+                        # Extract file details (handle emoji keys)
+                        file_name = None
+                        file_size_str = None
+                        download_url = None
                         
-                        # Handle size - could be string or number
-                        size_str = file_info.get("Size", "0")
+                        # Find title/name key
+                        for key, value in file_info.items():
+                            if "Title" in key or "title" in key or "name" in key:
+                                file_name = value
+                            elif "Size" in key or "size" in key:
+                                file_size_str = value
+                            elif "Direct" in key or "download" in key or "link" in key:
+                                download_url = value
+                        
+                        # Default fallback if keys not found
+                        if not file_name:
+                            file_name = file_info.get("Title", file_info.get("title", "unknown_file"))
+                        if not file_size_str:
+                            file_size_str = file_info.get("Size", file_info.get("size", "0"))
+                        if not download_url:
+                            download_url = file_info.get("Direct Download Link", file_info.get("download_url"))
+                        
+                        # Handle size conversion
                         try:
-                            if isinstance(size_str, str):
-                                # Remove any non-numeric characters except decimal point
+                            if isinstance(file_size_str, str):
                                 import re
-                                size_clean = re.sub(r'[^\d.]', '', size_str)
-                                file_size = int(float(size_clean) * 1024 * 1024)  # Convert MB to bytes
+                                # Extract number from "30.56 MB" format
+                                size_match = re.search(r'([\d.]+)', file_size_str)
+                                if size_match:
+                                    size_num = float(size_match.group(1))
+                                    if "MB" in file_size_str.upper():
+                                        file_size = int(size_num * 1024 * 1024)
+                                    elif "GB" in file_size_str.upper():
+                                        file_size = int(size_num * 1024 * 1024 * 1024)
+                                    elif "KB" in file_size_str.upper():
+                                        file_size = int(size_num * 1024)
+                                    else:
+                                        file_size = int(size_num)
+                                else:
+                                    file_size = 0
                             else:
-                                file_size = int(size_str)
+                                file_size = int(file_size_str)
                         except:
                             file_size = 0
-                        
-                        # Get download links
-                        download_links = file_info.get("DownloadLink", [])
-                        if not download_links:
-                            # Try alternative field names
-                            download_links = (file_info.get("download_links") or 
-                                            file_info.get("links") or 
-                                            file_info.get("urls") or [])
-                        
-                        # Select best download URL
-                        download_url = None
-                        if isinstance(download_links, list) and len(download_links) > 0:
-                            # Prefer the first link (usually highest quality)
-                            download_url = download_links[0]
-                        elif isinstance(download_links, str):
-                            download_url = download_links
                         
                         if download_url and file_name:
                             size_mb = file_size / (1024 * 1024) if file_size else 0
                             logger.info(f"✅ WDZone API Success - File: {file_name}, Size: {size_mb:.2f} MB")
                             logger.info(f"🔗 Download URL: {download_url[:100]}...")
-                            
-                            return {
-                                "file_name": file_name,
-                                "file_size": file_size, 
-                                "download_url": download_url
-                            }
-                    
-                    # Fallback: Try old format
-                    elif data.get("ok") and data.get("file_info"):
-                        file_info = data["file_info"]
-                        file_name = file_info.get("file_name", "unknown_file")
-                        file_size = file_info.get("size", 0)
-                        download_url = file_info.get("download_url")
-                        
-                        if download_url:
-                            size_mb = file_size / (1024 * 1024) if file_size else 0
-                            logger.info(f"✅ Legacy API Success - File: {file_name}, Size: {size_mb:.2f} MB")
                             
                             return {
                                 "file_name": file_name,
@@ -140,12 +146,12 @@ async def download_file(download_url: str, filename: str, status_msg):
     logger.info(f"📥 Starting download: {filename}")
     logger.info(f"🔗 Download URL: {download_url[:100]}...")
     
-    # Strategy 1: Large chunks with proper headers
+    # Strategy 1: Optimized download
     try:
-        await status_msg.edit_text("📥 Downloading with optimized settings...", parse_mode=None)
+        await status_msg.edit_text("📥 Downloading file...", parse_mode=None)
         logger.info("🔄 Attempting optimized download")
         
-        timeout = aiohttp.ClientTimeout(total=600, sock_read=120)  # 10 minutes total, 2 min read
+        timeout = aiohttp.ClientTimeout(total=600, sock_read=120)
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept': '*/*',
@@ -163,7 +169,8 @@ async def download_file(download_url: str, filename: str, status_msg):
                     content_length = response.headers.get('Content-Length')
                     if content_length:
                         total_size = int(content_length)
-                        logger.info(f"📊 File size from headers: {total_size / (1024*1024):.2f} MB")
+                        total_mb = total_size / (1024*1024)
+                        logger.info(f"📊 File size from headers: {total_mb:.2f} MB")
                     
                     async with aiofiles.open(file_path, 'wb') as file:
                         downloaded = 0
@@ -198,7 +205,7 @@ async def download_file(download_url: str, filename: str, status_msg):
         await status_msg.edit_text("📥 Retrying with conservative settings...", parse_mode=None)
         logger.info("🔄 Attempting conservative download")
         
-        timeout = aiohttp.ClientTimeout(total=300, sock_read=60)
+        timeout = aiohttp.ClientTimeout(total=900, sock_read=180)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(download_url) as response:
                 if response.status == 200:
@@ -213,29 +220,7 @@ async def download_file(download_url: str, filename: str, status_msg):
                         return file_path
                         
     except Exception as e:
-        logger.warning(f"Conservative download failed: {e}")
-    
-    # Strategy 3: Ultra-safe approach
-    try:
-        await status_msg.edit_text("📥 Final attempt with ultra-safe settings...", parse_mode=None)
-        logger.info("🔄 Attempting ultra-safe download")
-        
-        timeout = aiohttp.ClientTimeout(total=900, sock_read=180)  # 15 minutes total, 3 min read
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(download_url) as response:
-                if response.status == 200:
-                    async with aiofiles.open(file_path, 'wb') as file:
-                        chunk_size = 1024 * 8  # 8KB chunks
-                        async for chunk in response.content.iter_chunked(chunk_size):
-                            await file.write(chunk)
-                            await asyncio.sleep(0.1)  # Longer delay for stability
-                    
-                    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                        logger.info("✅ Ultra-safe download successful!")
-                        return file_path
-                        
-    except Exception as e:
-        logger.error(f"Ultra-safe download failed: {e}")
+        logger.error(f"Conservative download failed: {e}")
     
     # All strategies failed
     logger.error("❌ All download strategies failed")
@@ -266,4 +251,4 @@ class TeraboxDownloader:
 
 # Create global instance for backward compatibility
 downloader = TeraboxDownloader()
-                                
+    
