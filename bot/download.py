@@ -1,5 +1,5 @@
 """
-Complete Download Module - Correct WDZone API Endpoint
+Complete Download Module - Handler Compatible Return Format
 """
 import os
 import asyncio
@@ -9,24 +9,24 @@ import urllib.parse
 from loguru import logger
 import config
 
-async def get_download_info(terabox_url: str):
-    """Get download information from WDZone API with correct endpoint"""
+async def get_download_info(terabox_url: str, status_msg=None):
+    """Get download information from WDZone API with compatible return format"""
     
-    # Properly encode the URL
-    encoded_url = urllib.parse.quote(terabox_url, safe='')
-    api_url = f"https://wdzone-terabox-api.vercel.app/api?url={encoded_url}"
-    
-    logger.info(f"🔄 API Request: {api_url[:100]}...")
-    
-    timeout = aiohttp.ClientTimeout(total=30)
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9'
-    }
-    
-    async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-        try:
+    try:
+        # Properly encode the URL
+        encoded_url = urllib.parse.quote(terabox_url, safe='')
+        api_url = f"https://wdzone-terabox-api.vercel.app/api?url={encoded_url}"
+        
+        logger.info(f"🔄 API Request: {api_url[:100]}...")
+        
+        timeout = aiohttp.ClientTimeout(total=30)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9'
+        }
+        
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
             async with session.get(api_url) as response:
                 logger.info(f"📡 API Response Status: {response.status}")
                 
@@ -34,7 +34,7 @@ async def get_download_info(terabox_url: str):
                     data = await response.json()
                     logger.info(f"📊 API Response Keys: {list(data.keys())}")
                     
-                    # Handle WDZone API format from your test
+                    # Handle WDZone API format
                     status_key = None
                     extracted_key = None
                     
@@ -75,7 +75,7 @@ async def get_download_info(terabox_url: str):
                         if not download_url:
                             download_url = file_info.get("Direct Download Link", file_info.get("download_url"))
                         
-                        # Handle size conversion
+                        # Handle size conversion for numeric value
                         try:
                             if isinstance(file_size_str, str):
                                 import re
@@ -103,26 +103,35 @@ async def get_download_info(terabox_url: str):
                             logger.info(f"✅ WDZone API Success - File: {file_name}, Size: {size_mb:.2f} MB")
                             logger.info(f"🔗 Download URL: {download_url[:100]}...")
                             
+                            # Return in the format handlers expect
                             return {
-                                "file_name": file_name,
-                                "file_size": file_size, 
-                                "download_url": download_url
+                                "success": True,
+                                "filename": file_name,
+                                "size": file_size_str,  # Keep original size string
+                                "download_url": download_url,
+                                "file_size": file_size  # Also provide numeric size
                             }
                     
                     logger.error(f"❌ API returned unexpected format: {str(data)[:500]}...")
-                    raise Exception("API response format not recognized")
+                    return {
+                        "success": False,
+                        "error": "API response format not recognized"
+                    }
                     
                 else:
                     response_text = await response.text()
                     logger.error(f"❌ API request failed with status {response.status}: {response_text[:200]}...")
-                    raise Exception(f"API request failed: {response.status}")
+                    return {
+                        "success": False,
+                        "error": f"API request failed: {response.status}"
+                    }
                     
-        except aiohttp.ClientError as e:
-            logger.error(f"❌ Network error: {e}")
-            raise Exception(f"Network error: {e}")
-        except Exception as e:
-            logger.error(f"❌ API request error: {e}")
-            raise
+    except Exception as e:
+        logger.error(f"❌ API request error: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 def _sanitize_filename(filename: str) -> str:
     """Sanitize filename for safe storage"""
@@ -222,6 +231,28 @@ async def download_file(download_url: str, filename: str, status_msg):
     except Exception as e:
         logger.error(f"Conservative download failed: {e}")
     
+    # Strategy 3: Ultra-safe approach
+    try:
+        await status_msg.edit_text("📥 Final attempt with ultra-safe settings...", parse_mode=None)
+        logger.info("🔄 Attempting ultra-safe download")
+        
+        timeout = aiohttp.ClientTimeout(total=1200, sock_read=240)  # 20 minutes total, 4 min read
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(download_url) as response:
+                if response.status == 200:
+                    async with aiofiles.open(file_path, 'wb') as file:
+                        chunk_size = 1024 * 8  # 8KB chunks
+                        async for chunk in response.content.iter_chunked(chunk_size):
+                            await file.write(chunk)
+                            await asyncio.sleep(0.1)  # Longer delay for stability
+                    
+                    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                        logger.info("✅ Ultra-safe download successful!")
+                        return file_path
+                        
+    except Exception as e:
+        logger.error(f"Ultra-safe download failed: {e}")
+    
     # All strategies failed
     logger.error("❌ All download strategies failed")
     return None
@@ -241,9 +272,9 @@ class TeraboxDownloader:
         """Dummy method for compatibility"""
         pass
     
-    async def get_download_info(self, terabox_url: str, *args, **kwargs):
+    async def get_download_info(self, terabox_url: str, status_msg=None, *args, **kwargs):
         """Get download info - flexible parameter handling"""
-        return await get_download_info(terabox_url)
+        return await get_download_info(terabox_url, status_msg)
     
     async def download_with_resume(self, download_url: str, filename: str, status_msg, *args, **kwargs):
         """Download with resume - flexible parameter handling"""
@@ -251,4 +282,4 @@ class TeraboxDownloader:
 
 # Create global instance for backward compatibility
 downloader = TeraboxDownloader()
-    
+                            
