@@ -1,4 +1,3 @@
-# FORCE UPDATE - Version 3.0 - FINAL FIX
 """
 Bot handlers - Simple Working Version (No External Dependencies)
 """
@@ -71,26 +70,26 @@ class BotHandlers:
         # Simple force sub check
         if not await force_subscription.check_subscription(update, context):
             return
-        
+            
         user = update.effective_user
         await update.message.reply_text(
-            f"🎉 Welcome {user.first_name}!\n\n"
-            f"I'm your Terabox Leech Bot 🚀\n\n"
-            f"📥 Send me any Terabox link to download:\n"
+            f"🎉 **Welcome {user.first_name}!**\n\n"
+            f"I'm your **Terabox Leech Bot** 🚀\n\n"
+            f"📥 **Send me any Terabox link to download:**\n"
             f"• terabox.com\n"
             f"• 1024terabox.com\n"
             f"• teraboxurl.com\n"
             f"• mirrobox.com\n\n"
-            f"🎬 Videos → Playable videos\n"
-            f"🎵 Audio → Music files\n"
-            f"📸 Photos → Viewable images\n"
-            f"📁 Others → Documents\n\n"
-            f"Commands:\n"
+            f"🎬 **Videos** → Playable videos\n"
+            f"🎵 **Audio** → Music files\n"
+            f"📸 **Photos** → Viewable images\n"
+            f"📁 **Others** → Documents\n\n"
+            f"**Commands:**\n"
             f"/help - Show help\n"
             f"/cancel - Cancel download\n"
             f"/stats - Bot statistics\n\n"
             f"Just paste the link and I'll download it for you! ✨",
-            parse_mode=None
+            parse_mode='Markdown'
         )
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -99,18 +98,18 @@ class BotHandlers:
             return
         
         await update.message.reply_text(
-            "📋 How to use:\n\n"
+            "📋 **How to use:**\n\n"
             "1. Copy any Terabox share link\n"
             "2. Send it to me\n"
             "3. Wait for download to complete\n"
             "4. Get your file as proper media type!\n\n"
-            "🔗 Supported domains:\n"
+            "🔗 **Supported domains:**\n"
             "• terabox.com\n"
             "• 1024terabox.com\n"
             "• teraboxurl.com\n"
             "• mirrobox.com\n\n"
             "That's it! Simple and fast! ⚡",
-            parse_mode=None
+            parse_mode='Markdown'
         )
     
     async def cancel_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -119,20 +118,20 @@ class BotHandlers:
         
         if not download_manager.has_active_download(user_id):
             await update.message.reply_text(
-                "ℹ️ No Active Download\n\n"
+                "ℹ️ **No Active Download**\n\n"
                 "You don't have any ongoing downloads to cancel.\n\n"
                 "📥 Send a Terabox link to start downloading!",
-                parse_mode=None
+                parse_mode='Markdown'
             )
             return
         
         # Cancel the download
         download_manager.cancel_download(user_id)
         await update.message.reply_text(
-            "✅ Download Cancelled\n\n"
+            "✅ **Download Cancelled**\n\n"
             "Your download has been successfully cancelled.\n"
             "You can start a new download anytime!",
-            parse_mode=None
+            parse_mode='Markdown'
         )
         logger.info(f"🗑️ User {user_id} cancelled their download")
     
@@ -142,16 +141,16 @@ class BotHandlers:
         user_has_download = download_manager.has_active_download(update.effective_user.id)
         
         await update.message.reply_text(
-            f"📊 Bot Statistics\n\n"
-            f"🚀 Status: ✅ Online & Operational\n"
-            f"📥 Active Downloads: {active_downloads}\n"
-            f"👤 Your Status: {'⏳ Downloading' if user_has_download else '✅ Ready'}\n\n"
+            f"📊 **Bot Statistics**\n\n"
+            f"🚀 **Status:** ✅ Online & Operational\n"
+            f"📥 **Active Downloads:** {active_downloads}\n"
+            f"👤 **Your Status:** {'⏳ Downloading' if user_has_download else '✅ Ready'}\n\n"
             f"🎬 Video uploads: ✅ Enabled\n"
             f"🎵 Audio uploads: ✅ Enabled\n"
             f"📸 Photo uploads: ✅ Enabled\n"
             f"📁 Document uploads: ✅ Enabled\n\n"
             f"⚡ All systems operational!",
-            parse_mode=None
+            parse_mode='Markdown'
         )
     
     async def verify_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -169,10 +168,10 @@ class BotHandlers:
         # Check if user already has active download
         if download_manager.has_active_download(user_id):
             await update.message.reply_text(
-                "⚠️ Download In Progress\n\n"
+                "⚠️ **Download In Progress**\n\n"
                 "You already have an active download.\n"
-                "Use /cancel to stop it and start a new one.",
-                parse_mode=None
+                "Use `/cancel` to stop it and start a new one.",
+                parse_mode='Markdown'
             )
             return
         
@@ -187,20 +186,20 @@ class BotHandlers:
         
         if not is_valid:
             await update.message.reply_text(
-                "❌ Invalid Terabox link!\n\n"
+                "❌ **Invalid Terabox link!**\n\n"
                 "Please send a valid link like:\n"
-                f"https://terabox.com/s/xxxxx",
-                parse_mode=None
+                "`https://terabox.com/s/xxxxx`",
+                parse_mode='Markdown'
             )
             return
         
         # Start download process
         status_msg = await update.message.reply_text(
-            f"📥 Processing Terabox Link...\n\n"
-            f"🔗 {text[:50]}...\n"
+            f"📥 **Processing Terabox Link...**\n\n"
+            f"🔗 `{text[:50]}...`\n"
             "⏳ Connecting to download servers...\n\n"
-            "💡 Use /cancel to stop this download",
-            parse_mode=None
+            "💡 Use `/cancel` to stop this download",
+            parse_mode='Markdown'
         )
         
         # Add to download manager
@@ -215,129 +214,105 @@ class BotHandlers:
             download_manager.remove_download(user_id)
     
     async def _download_process(self, update: Update, text: str, status_msg, user_id: int):
-        """BULLETPROOF download process - FINAL VERSION"""
-        download_url = None  # Initialize at the start
+        """The actual download process - FIXED VERSION"""
         try:
             # Step 1: Get download info
             download_info = await self.downloader.get_download_info(text, status_msg)
             
-            # Log everything for debugging
-            logger.info(f"🔍 API Response: {download_info}")
-            
             # Check if cancelled
             if download_manager.is_cancelled(user_id):
-                await status_msg.edit_text("❌ Download Cancelled", parse_mode=None)
-                return
-            
-            # Check if API call succeeded
-            if not download_info or not download_info.get('success', False):
-                error_msg = download_info.get('error', 'API call failed') if download_info else 'No response from API'
-                await status_msg.edit_text(f"❌ API Error: {error_msg}", parse_mode=None)
-                return
-            
-            # Extract basic info
-            filename = download_info.get('filename', 'unknown_file.bin')
-            file_size = download_info.get('size', 'Unknown size')
-            
-            # BULLETPROOF URL extraction - try every possible way
-            download_url = None
-            
-            # Method 1: Try direct keys
-            for key in ['download_url', 'Direct Download Link', '🔗 Direct Download Link', 'url', 'link']:
-                if key in download_info and download_info[key]:
-                    download_url = download_info[key]
-                    logger.info(f"✅ Found URL with key: {key}")
-                    break
-            
-            # Method 2: Search all keys for URLs
-            if not download_url:
-                for key, value in download_info.items():
-                    if value and isinstance(value, str) and ('http' in value.lower() or 'download' in key.lower()):
-                        download_url = value
-                        logger.info(f"✅ Found URL by search: {key}")
-                        break
-            
-            # Method 3: Last resort - any string with http
-            if not download_url:
-                for key, value in download_info.items():
-                    if isinstance(value, str) and 'http' in value:
-                        download_url = value
-                        logger.info(f"✅ Found URL (last resort): {key}")
-                        break
-            
-            # If still no URL found
-            if not download_url:
-                all_keys = list(download_info.keys())
-                logger.error(f"❌ No download URL found in: {all_keys}")
                 await status_msg.edit_text(
-                    f"❌ No download URL found\n\n"
-                    f"Available keys: {all_keys}\n\n"
-                    "API might have changed format.",
-                    parse_mode=None
+                    "❌ **Download Cancelled**\n\n"
+                    "The download has been cancelled by user.",
+                    parse_mode='Markdown'
                 )
                 return
             
-            # Now we definitely have a download_url
-            logger.info(f"✅ Final download URL: {download_url[:100]}...")
+            if not download_info['success']:
+                await status_msg.edit_text(
+                    f"❌ **Failed to get download info**\n\n"
+                    f"**Reason:** {download_info['error']}",
+                    parse_mode='Markdown'
+                )
+                return
             
-            # Detect media type
-            file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
+            # Step 2: Detect media type
+            file_ext = download_info['filename'].lower().split('.')[-1] if '.' in download_info['filename'] else ''
             media_type, media_emoji = self._detect_media_type(file_ext)
             
-            # Update status
+            # Step 3: Download file
             await status_msg.edit_text(
-                f"📥 Downloading File...\n\n"
-                f"📁 File: {filename[:40]}...\n"
-                f"💾 Size: {file_size}\n"
-                f"📱 Type: {media_emoji} {media_type}\n"
-                f"⏳ Please wait...",
-                parse_mode=None
+                f"📥 **Downloading File...**\n\n"
+                f"📁 **File:** {download_info['filename'][:40]}...\n"
+                f"💾 **Size:** {download_info['size']}\n"
+                f"📱 **Type:** {media_emoji} {media_type}\n"
+                f"⏳ Please wait...\n\n"
+                f"💡 Use `/cancel` to stop",
+                parse_mode='Markdown'
             )
             
-            # Download the file
-            file_path = await self.downloader.download_file(download_url, filename, status_msg)
+            # FIXED: Use download_info['download_url'] instead of undefined download_url
+            file_path = await self.downloader.download_file(
+                download_info['download_url'],
+                download_info['filename'],
+                status_msg
+            )
             
             # Check if cancelled after download
             if download_manager.is_cancelled(user_id):
-                await status_msg.edit_text("❌ Download Cancelled", parse_mode=None)
+                await status_msg.edit_text(
+                    "❌ **Download Cancelled**\n\n"
+                    "The download has been cancelled by user.",
+                    parse_mode='Markdown'
+                )
+                # Clean up file
                 if file_path:
                     await self.downloader.cleanup_file(file_path)
                 return
             
             if not file_path:
-                await status_msg.edit_text("❌ Download failed", parse_mode=None)
+                await status_msg.edit_text(
+                    "❌ **File download failed**\n\n"
+                    "Please try again later!",
+                    parse_mode='Markdown'
+                )
                 return
             
-            # Upload to Telegram
+            # Step 4: Upload to Telegram
             await status_msg.edit_text(
-                f"📤 Uploading to Telegram...\n\n"
-                f"📁 File: {filename[:40]}...\n"
-                f"💾 Size: {file_size}\n"
-                f"📱 Type: {media_emoji} {media_type}",
-                parse_mode=None
+                f"📤 **Uploading to Telegram...**\n\n"
+                f"📁 **File:** {download_info['filename'][:40]}...\n"
+                f"💾 **Size:** {download_info['size']}\n"
+                f"📱 **Uploading as:** {media_emoji} {media_type}",
+                parse_mode='Markdown'
             )
             
             upload_success = await self.uploader.upload_with_progress(
-                update, file_path, filename, status_msg
+                update, file_path, download_info['filename'], status_msg
             )
             
             if upload_success:
                 await status_msg.edit_text(
-                    f"🎉 SUCCESS!\n\n"
-                    f"📁 File: {filename[:40]}{'...' if len(filename) > 40 else ''}\n"
-                    f"💾 Size: {file_size}\n"
-                    f"📱 Type: {media_emoji} {media_type}\n"
-                    f"⚡ Status: Uploaded Successfully!\n\n"
+                    f"🎉 **SUCCESS!**\n\n"
+                    f"📁 **File:** {download_info['filename'][:40]}{'...' if len(download_info['filename']) > 40 else ''}\n"
+                    f"💾 **Size:** {download_info['size']}\n"
+                    f"📱 **Type:** {media_emoji} {media_type}\n"
+                    f"⚡ **Status:** Uploaded Successfully!\n\n"
                     f"✨ Ready to view/play in Telegram!",
-                    parse_mode=None
+                    parse_mode='Markdown'
                 )
             
             # Clean up
             await self.downloader.cleanup_file(file_path)
             
         except Exception as e:
-            logger.error(f"❌ Download process error: {str(e)}")
-            await status_msg.edit_text(f"❌ System Error: {str(e)[:100]}", parse_mode=None)
+            logger.error(f"❌ Download process error: {e}")
+            if not download_manager.is_cancelled(user_id):
+                await status_msg.edit_text(
+                    "❌ **System Error**\n\n"
+                    "Something went wrong. Please try again!",
+                    parse_mode='Markdown'
+                )
     
     def _detect_media_type(self, file_ext: str):
         """Detect media type from file extension"""
@@ -362,12 +337,12 @@ class BotHandlers:
             return
         
         await update.message.reply_text(
-            "ℹ️ Send me a Terabox link!\n\n"
-            "Examples:\n"
-            "• https://terabox.com/s/xxxxx\n"
-            "• https://1024terabox.com/s/xxxxx\n\n"
+            "ℹ️ **Send me a Terabox link!**\n\n"
+            "**Examples:**\n"
+            "• `https://terabox.com/s/xxxxx`\n"
+            "• `https://1024terabox.com/s/xxxxx`\n\n"
             "I'll download it and upload as the right media type! 🚀\n\n"
-            "💡 Use /cancel to stop ongoing downloads",
-            parse_mode=None
-        )
-        
+            "💡 Use `/cancel` to stop ongoing downloads",
+            parse_mode='Markdown'
+    )
+    
