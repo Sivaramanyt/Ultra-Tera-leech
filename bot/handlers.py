@@ -238,9 +238,9 @@ class BotHandlers:
                 )
                 return
             
-            # FIXED: Extract variables from download_info
+            # FIXED: Extract variables from download_info properly
             filename = download_info.get('filename', 'unknown_file')
-            download_url = download_info.get('download_url')  # ← FIXED: Define download_url here
+            download_url = download_info.get('download_url')  # ← CRITICAL FIX
             file_size = download_info.get('size', 'Unknown')
             
             # FIXED: Validate download_url exists
@@ -272,7 +272,7 @@ class BotHandlers:
             
             # FIXED: Now download_url is properly defined
             file_path = await self.downloader.download_file(
-                download_url,
+                download_url,  # ← Now properly defined
                 filename,
                 status_msg
             )
