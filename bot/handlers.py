@@ -50,8 +50,8 @@ class SimpleForceSubscription:
             return True
         
         # Skip if not configured
-        if (not hasattr(config, 'FORCE_SUB_CHANNELS') or
-            not config.FORCE_SUB_CHANNELS or
+        if (not hasattr(config, 'FORCE_SUB_CHANNELS') or 
+            not config.FORCE_SUB_CHANNELS or 
             not getattr(config, 'ENABLE_FORCE_SUB', False)):
             return True
         
@@ -216,7 +216,7 @@ class BotHandlers:
             download_manager.remove_download(user_id)
     
     async def _download_process(self, update: Update, text: str, status_msg, user_id: int):
-        """The actual download process"""
+        """The actual download process - FIXED"""
         try:
             # Step 1: Get download info
             download_info = await self.downloader.get_download_info(text, status_msg)
@@ -238,24 +238,42 @@ class BotHandlers:
                 )
                 return
             
+            # FIXED: Extract variables from download_info
+            filename = download_info.get('filename', 'unknown_file')
+            download_url = download_info.get('download_url')  # ← FIXED: Define download_url here
+            file_size = download_info.get('size', 'Unknown')
+            
+            # FIXED: Validate download_url exists
+            if not download_url:
+                logger.error("❌ No download URL found in API response")
+                await status_msg.edit_text(
+                    "❌ Failed to extract download URL\n\n"
+                    "Please try again or contact support.",
+                    parse_mode=None
+                )
+                return
+            
+            logger.info(f"✅ Download URL extracted: {download_url[:100]}...")
+            
             # Step 2: Detect media type
-            file_ext = download_info['filename'].lower().split('.')[-1] if '.' in download_info['filename'] else ''
+            file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
             media_type, media_emoji = self._detect_media_type(file_ext)
             
             # Step 3: Download file
             await status_msg.edit_text(
                 f"📥 Downloading File...\n\n"
-                f"📁 File: {download_info['filename'][:40]}...\n"
-                f"💾 Size: {download_info['size']}\n"
+                f"📁 File: {filename[:40]}...\n"
+                f"💾 Size: {file_size}\n"
                 f"📱 Type: {media_emoji} {media_type}\n"
                 f"⏳ Please wait...\n\n"
                 f"💡 Use /cancel to stop",
                 parse_mode=None
             )
             
+            # FIXED: Now download_url is properly defined
             file_path = await self.downloader.download_file(
-                download_info['download_url'],
-                download_info['filename'],
+                download_url,
+                filename,
                 status_msg
             )
             
@@ -282,21 +300,21 @@ class BotHandlers:
             # Step 4: Upload to Telegram
             await status_msg.edit_text(
                 f"📤 Uploading to Telegram...\n\n"
-                f"📁 File: {download_info['filename'][:40]}...\n"
-                f"💾 Size: {download_info['size']}\n"
+                f"📁 File: {filename[:40]}...\n"
+                f"💾 Size: {file_size}\n"
                 f"📱 Uploading as: {media_emoji} {media_type}",
                 parse_mode=None
             )
             
             upload_success = await self.uploader.upload_with_progress(
-                update, file_path, download_info['filename'], status_msg
+                update, file_path, filename, status_msg
             )
             
             if upload_success:
                 await status_msg.edit_text(
                     f"🎉 SUCCESS!\n\n"
-                    f"📁 File: {download_info['filename'][:40]}{'...' if len(download_info['filename']) > 40 else ''}\n"
-                    f"💾 Size: {download_info['size']}\n"
+                    f"📁 File: {filename[:40]}{'...' if len(filename) > 40 else ''}\n"
+                    f"💾 Size: {file_size}\n"
                     f"📱 Type: {media_emoji} {media_type}\n"
                     f"⚡ Status: Uploaded Successfully!\n\n"
                     f"✨ Ready to view/play in Telegram!",
@@ -345,5 +363,5 @@ class BotHandlers:
             "I'll download it and upload as the right media type! 🚀\n\n"
             "💡 Use /cancel to stop ongoing downloads",
             parse_mode=None
-                            )
-                           
+        )
+        
