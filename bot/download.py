@@ -1,5 +1,5 @@
 """
-Complete Download Module - Handler Compatible Return Format
+Complete Download Module - Fully Handler Compatible
 """
 import os
 import asyncio
@@ -278,6 +278,10 @@ class TeraboxDownloader:
     
     async def download_with_resume(self, download_url: str, filename: str, status_msg, *args, **kwargs):
         """Download with resume - flexible parameter handling"""
+        return await download_file(download_url, filename, status_msg)
+    
+    async def download_file(self, download_url: str, filename: str, status_msg, *args, **kwargs):
+        """Download file method for handler compatibility - ADDED THIS METHOD"""
         return await download_file(download_url, filename, status_msg)
 
 # Create global instance for backward compatibility
